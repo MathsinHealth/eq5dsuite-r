@@ -3,7 +3,7 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of this package is to provide a suite of functions for manipulating and analysing EQ-5D data. 
+The goal of this package is tof provide a suite of functions for manipulating and analysing EQ-5D data. 
 
 The file structure in the `R` folder is as follows:
 

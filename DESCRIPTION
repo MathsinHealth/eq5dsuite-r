@@ -46,9 +46,7 @@ Imports:
     rlang,
     scales,
     rappdirs,
-    shiny,
-    bslib,
-    DT
+    shiny
 Suggests:
     spelling,
     testthat (>= 3.0.0)

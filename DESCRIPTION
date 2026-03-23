@@ -1,13 +1,17 @@
 Package: eq5dsuite
 Type: Package
 Title: Handling and Analysing EQ-5d Data
-Version: 1.0.1
+Version: 1.0.2
 Authors@R: 
   c(person(given = "Kim",
            family = "Rand",
            role = c("aut", "cre"),
            email = "krand@mathsinhealth.com",
            comment = c(ORCID = "0000-0001-7692-4099")),
+    person(given = "Oliver",
+           family = "Rivero-Arias",
+           role = "aut",
+           comment = c(ORCID = "0000-0003-2233-6544")),
     person(given = "Iryna",
            family = "Schlackow",
            role = "aut",
@@ -35,13 +39,16 @@ LazyData: true
 RoxygenNote: 7.3.2
 Depends: 
     R (>= 3.5)
-Imports: 
-    dplyr,
+Imports:
     ggplot2,
     moments,
     RColorBrewer,
     rlang,
     scales,
-    stringr,
-    tidyr,
-    rappdirs
+    rappdirs,
+    shiny
+Suggests:
+    spelling,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Language: en-US

@@ -46,9 +46,13 @@ Imports:
     rlang,
     scales,
     rappdirs,
+<<<<<<< HEAD
     shiny,
     bslib,
     DT
+=======
+    shiny
+>>>>>>> 2dedd138f9b4928538ed35f76dda13f4e3482981
 Suggests:
     spelling,
     testthat (>= 3.0.0)

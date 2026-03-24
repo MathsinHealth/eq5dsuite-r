@@ -12,16 +12,16 @@ mih_footer <- shiny::tags$div(
     gap:0.4rem;
   ",
   
-  # Logo (big and centered)
-  shiny::tags$a(
-    href   = "https://www.mathsinhealth.com",
-    target = "_blank",
-    shiny::tags$img(
-      src = "logo.png",
-      height = "60px",
-      style = "margin-bottom:4px;"
-    )
-  ),
+  # # Logo (big and centered)
+  # shiny::tags$a(
+  #   href   = "https://www.mathsinhealth.com",
+  #   target = "_blank",
+  #   shiny::tags$img(
+  #     src = "logo.png",
+  #     height = "20px",
+  #     style = "margin-bottom:4px;"
+  #   )
+  # ),
   
   # Text below logo
   shiny::tags$div(
@@ -295,8 +295,8 @@ ui <- shiny::tagList(
         )
       )
     )
-  ),
+  )
 
   # ── Global footer (defined once, visible on all pages) ────────────────────
-  mih_footer
+  # mih_footer
 )

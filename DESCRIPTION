@@ -45,9 +45,12 @@ Imports:
     RColorBrewer,
     rlang,
     scales,
-    rappdirs,
-    shiny
+    rappdirs
 Suggests:
+    shiny,
+    DT,
+    bslib,
+    readxl,
     spelling,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

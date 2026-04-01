@@ -1,7 +1,7 @@
 Package: eq5dsuite
 Type: Package
 Title: Handling and Analysing EQ-5d Data
-Version: 1.0.3
+Version: 2.0.0
 Authors@R: 
   c(person(given = "Kim",
            family = "Rand",
@@ -36,7 +36,7 @@ Description: The EQ-5D is a widely-used standarized instrument for measuring Hea
 License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Depends: 
     R (>= 3.5)
 Imports:

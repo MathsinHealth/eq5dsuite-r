@@ -350,14 +350,12 @@ check_builtin_conflicts <- function(version) {
   if (length(shadowed) > 0) {
     message(
       "\n\u26a0\ufe0f  Warning: The following EQ-5D-", version,
-      " built-in value set(s) have been superseded ",
-      "but cannot be removed automatically:\n",
+      " value set(s) have been superseded by a renamed version:\n",
       paste0("  - ", shadowed, collapse = "\n"), "\n",
-      "  These codes still exist in the package and ",
-      "will be used if called directly.\n",
-      "  They will be removed in the next package ",
-      "release. In the meantime, use the renamed ",
-      "VS_code when calculating values."
+      "  The old codes above are still present in the package ",
+      "but will be removed in the next release.\n",
+      "  To avoid this warning, switch to the new VS_code ",
+      "when calculating values."
     )
   }
 

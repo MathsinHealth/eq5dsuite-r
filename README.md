@@ -127,4 +127,4 @@ If you use eq5dsuite in your research, please cite:
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+This package is licensed under the GPL (>= 2).

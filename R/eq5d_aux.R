@@ -545,7 +545,6 @@
 #'   levels_fu = c('Pre-op', 'Post-op')
 #' )
 #' @export
-
 .pchctab <- function(df,
                   name_id,
                   name_groupvar,
@@ -576,8 +575,6 @@
   df[, names_eq5d] <- tmp
   rm(tmp)
   
-  
-  
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -589,8 +586,6 @@
   df <- df[order(df$id, df$groupvar, df$fu), , drop = FALSE]
   # check uniqueness of id-groupvar-fu combinations
   .check_uniqueness(df, group_by = c("id", "groupvar", "fu"))
-  
-  
   
   
   ### analysis ###

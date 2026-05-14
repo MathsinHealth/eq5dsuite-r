@@ -40,6 +40,7 @@ toEQ5Dindex <- function(
   if (length(dim(x)) == 2L) {
     
     # Normalise column names to lower-case
+    dim.names <- tolower(dim.names)
     if (!is.null(colnames(x))) colnames(x) <- tolower(colnames(x))
     
     # Assign default names if none present

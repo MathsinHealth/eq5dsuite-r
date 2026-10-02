@@ -2110,68 +2110,66 @@ eq5d_profile_mixed_dimensions_by_group_plot <- function(df,
 #' improvement, and points below indicate deterioration.
 #'
 #' @details
-#' The ranking is over the health states that occur in \code{df}, ordered by
-#' the values in \code{name_utility}: the best observed state is rank 1 and
-#' the worst is rank \emph{n}, where \emph{n} is the number of distinct
-#' states observed. Earlier versions of this function valued every state the
-#' instrument allows and ranked over all of them -- 243 for the EQ-5D-3L,
-#' 3,125 for the 5L -- which needed a value set rather than a column of
-#' values. The order of the plotted points is the same either way; the rank
-#' numbers and the axis limits are not.
+#' The ranking is over \strong{every health state the instrument allows}, not
+#' only those the data contain: all 243 states for the EQ-5D-3L and the
+#' EQ-5D-Y-3L, and all 3,125 for the EQ-5D-5L. Each is valued with the value
+#' set named by \code{country} and \code{eq5d_version}, and ordered best to
+#' worst, so the best possible state is rank 1 and the worst is rank 243 or
+#' 3,125. A rank therefore means the same thing in every dataset valued with
+#' the same value set, and the axes span the whole classification system
+#' rather than the part of it a particular sample happens to occupy.
 #'
-#' Where one state carries more than one value -- which happens when the
-#' values depend on something besides the state, as in the NICE DSU mapping,
-#' where they depend on age and sex -- the state is ranked by its mean value,
-#' with a warning.
+#' This is why the function takes a value set rather than a column of
+#' pre-calculated values: the states that do \emph{not} occur in the data
+#' still have to be valued in order to place the states that do.
 #'
-#' @param df A data frame containing EQ-5D columns, a value column, an ID column, and a follow-up column
+#' @param df A data frame containing EQ-5D columns, an ID column and a follow-up column
 #' @param names_eq5d A character vector of EQ-5D dimension names
-#' @param name_utility Character string naming the column of pre-calculated
-#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
-#'   used. The values are used to rank the observed health states; see
-#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_fu A character string for the follow-up column
 #' @param levels_fu A character vector of length 2, specifying the order of the follow-up levels (e.g., c("Pre-op","Post-op"))
 #' @param name_id A character string for the patient ID column
+#' @param eq5d_version Version of the EQ-5D instrument: "3L", "5L" or "Y3L".
+#'   It decides how many states are ranked.
+#' @param country Value set code used to rank the states; see
+#'   \code{\link{eqvs_display}} for the codes available.
 #' @return A list with components:
 #'   \item{plot_data}{The plot data with ranks and classification.}
 #'   \item{p}{A \code{ggplot2} object displaying the HPG scatter plot.}
 #' @export
 #' @examples
-#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
-#'                              country = "GB")
 #' tmp <- eq5d_profile_health_profile_grid(
-#'            df = example_data, 
-#'            names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'            name_utility = "value",
-#'            name_fu = "time", 
-#'            levels_fu = c("Pre-op", "Post-op"), 
-#'            name_id = "id"
+#'            df = example_data,
+#'            names_eq5d = c("mo", "sc", "ua", "pd", "ad"),
+#'            name_fu = "time",
+#'            levels_fu = c("Pre-op", "Post-op"),
+#'            name_id = "id",
+#'            eq5d_version = "3L",
+#'            country = "GB"
 #'        )
 
 eq5d_profile_health_profile_grid <- function(df,
                          names_eq5d,
-                         name_utility = NULL,
                          name_fu,
                          levels_fu = NULL,
-                         name_id) {
+                         name_id,
+                         eq5d_version,
+                         country) {
   ### 1) Data Preparation ###
   # Replace NULL names with defaults (helper function that sets names_eq5d, name_fu, etc.)
   temp <- .get_names(df = df,
                      names_eq5d = names_eq5d,
-                     name_utility = name_utility,
                      name_fu = name_fu,
-                     levels_fu = levels_fu)
+                     levels_fu = levels_fu,
+                     eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
-  name_utility <- temp$name_utility
   name_fu    <- temp$name_fu
   levels_fu  <- temp$levels_fu
+  eq5d_version <- temp$eq5d_version
   
   # Check columns exist
-  names_all <- c(name_id,  names_eq5d, name_utility, name_fu)
+  names_all <- c(name_id,  names_eq5d, name_fu)
   .check_columns(df, name_id = name_id,
                  names_eq5d = names_eq5d,
-                 name_utility = name_utility,
                  name_fu = name_fu)
   
   # Keep only relevant columns
@@ -2180,35 +2178,21 @@ eq5d_profile_health_profile_grid <- function(df,
   # Rename for internal use
   names(df)[names(df) == name_id] <- "id"
 
-  # Prepare EQ-5D & Follow-up columns. add_state gives each row its health
-  # state, which is what the supplied value belongs to.
-  df <- .prep_eq5d(df = df, names = names_eq5d, add_state = TRUE)
-  df <- .prep_utility(df = df, name = name_utility)
+  # Prepare EQ-5D & Follow-up columns
+  df <- .prep_eq5d(df = df, names = names_eq5d)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
 
-  # The value set, as far as the data show it: one row per observed state,
-  # ordered best to worst. This replaces valuing every state the instrument
-  # allows, which a column of values cannot supply.
-  vs <- df[!is.na(df$state) & !is.na(df$utility), c("state", "utility"),
-           drop = FALSE]
-  if (nrow(vs) == 0L)
-    stop("No health state has a value in `", name_utility,
-         "`, so the states cannot be ranked.", call. = FALSE)
-  by_state <- split(vs$utility, vs$state)
-  n_values <- vapply(by_state, function(u) length(unique(u)), integer(1L))
-  if (any(n_values > 1L))
-    warning(sum(n_values > 1L), " health state(s) carry more than one value ",
-            "in `", name_utility, "`; each has been ranked by its mean. ",
-            "Values that depend on more than the health state, such as the ",
-            "age- and sex-dependent NICE DSU mapping, do not give a single ",
-            "ranking of states.", call. = FALSE)
-  vs <- data.frame(profile = as.integer(names(by_state)),
-                   utility = vapply(by_state, mean, numeric(1L)),
-                   stringsAsFactors = FALSE)
-
-  # .pchc() builds its own `state` column (the classification), and `utility`
-  # has served its purpose, so neither is carried into it.
-  df <- df[, setdiff(names(df), c("state", "utility")), drop = FALSE]
+  # Every state the instrument allows, valued and ordered best to worst. The
+  # states absent from the data are ranked too: a state's rank is its
+  # position in the whole classification system, so it means the same thing
+  # in every sample valued with this value set.
+  vs <- data.frame(profile = make_all_EQ_indexes(version = eq5d_version))
+  vs$utility <- eq5d(vs$profile, country = country, version = eq5d_version)
+  if (all(is.na(vs$utility)))
+    stop("No state could be valued with country = \"", country,
+         "\" and version = \"", eq5d_version,
+         "\", so the states cannot be ranked. See eqvs_display() for the ",
+         "codes available.", call. = FALSE)
 
   # Sort by (id, fu)
   df <- df[order(df$id, df$fu), , drop = FALSE]
@@ -2251,6 +2235,12 @@ eq5d_profile_health_profile_grid <- function(df,
   
   # Cteate plot
   max_rank <- nrow(vs)
+  # `rank_t1` is the first follow-up level and `rank_t2` the second, so the
+  # x axis holds the second and the y axis the first. The labels used to be
+  # the other way round, which made the figure say that the x axis was
+  # baseline when it was follow-up. Mapping and labels agree now, and
+  # improvement stays above the diagonal: an individual whose state improves
+  # has a worse (higher) baseline rank on y than follow-up rank on x.
   p <- ggplot(df, aes(x = .data$rank_t2, y = .data$rank_t1, color = .data$state, shape = .data$state)) +
     geom_point(size = 3) +
     geom_abline(intercept = 0, slope = 1, linetype = "solid", color = "black") +
@@ -2258,8 +2248,8 @@ eq5d_profile_health_profile_grid <- function(df,
     scale_y_continuous(limits = c(1, max_rank), expand = c(0,0)) +
     labs(
       title    = "Health Profile Grid (HPG)",
-      x        = paste0(levels_fu[1], " rank"),
-      y        = paste0(levels_fu[2], " rank"),
+      x        = paste0(levels_fu[2], " rank"),
+      y        = paste0(levels_fu[1], " rank"),
       color    = "Classification",  # Legend title for color
       shape    = "Classification"   # Legend title for shape
     ) +

@@ -109,14 +109,13 @@ eq5d_profile_top_states <- function(df,
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, 
+  temp <- .get_names(df = df, names_eq5d = names_eq5d, 
                      eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
   eq5d_version <- temp$eq5d_version
   # check existence of columns 
   names_all <- names_eq5d
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, names_eq5d = names_eq5d)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -209,8 +208,10 @@ eq5d_profile_pchc_table <- function(df,
   levels_fu <- temp$levels_fu
   # check existence of columns 
   names_all <- c(name_groupvar, name_id, names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, name_groupvar = name_groupvar,
+                 name_id = name_id,
+                 names_eq5d = names_eq5d,
+                 name_fu = name_fu)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -311,8 +312,10 @@ eq5d_profile_pchc_with_no_problems_table <- function(df,
   levels_fu <- temp$levels_fu
   # check existence of columns 
   names_all <- c(name_groupvar, name_id, names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, name_groupvar = name_groupvar,
+                 name_id = name_id,
+                 names_eq5d = names_eq5d,
+                 name_fu = name_fu)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -419,8 +422,9 @@ eq5d_profile_dimension_change_table <- function(df,
   levels_fu <- temp$levels_fu
   # check existence of columns 
   names_all <- c(name_id, names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, name_id = name_id,
+                 names_eq5d = names_eq5d,
+                 name_fu = name_fu)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -510,44 +514,49 @@ eq5d_profile_dimension_change_table <- function(df,
 
 #' eq5d_profile_lss_utility_summary: Summary statistics for the EQ-5D values by all the different LSSs (Level Sum Scores)
 #' 
-#' @param df Data frame with the EQ-5D columns
+#' @param df Data frame with the EQ-5D dimension and value columns
 #' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary data frame
 #' @export
 #' @examples
 #' df <- data.frame(make_all_EQ_states(version = "5L"))
+#' df$value <- eq5d5l(df[, c("mo", "sc", "ua", "pd", "ad")], country = "US")
 #' eq5d_profile_lss_utility_summary(
 #'   df, 
 #'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'   eq5d_version = "3L", 
-#'   country = "US"
+#'   name_utility = "value",
+#'   eq5d_version = "5L"
 #' )
 
 eq5d_profile_lss_utility_summary <- function(df, 
                       names_eq5d = NULL,
-                      eq5d_version = NULL,
-                      country){
+                      name_utility = NULL,
+                      eq5d_version = NULL){
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
+  temp <- .get_names(df = df, names_eq5d = names_eq5d,
+                     name_utility = name_utility, eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
+  name_utility <- temp$name_utility
   eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(names_eq5d, name_utility)
+  .check_columns(df, names_eq5d = names_eq5d, name_utility = name_utility)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
-  # further checks and data preparation
+  # further checks and data preparation. The Level Sum Score comes from the
+  # dimensions; the values are taken as supplied.
   df <- .prep_eq5d(df = df, names = names_eq5d,
                    add_state = TRUE,
-                   add_lss = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+                   add_lss = TRUE, eq5d_version = eq5d_version)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("lss", "utility"), drop = FALSE]
 
   ### analysis ###
@@ -603,13 +612,12 @@ eq5d_profile_lfs_distribution <- function(df,
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
+  temp <- .get_names(df = df, names_eq5d = names_eq5d, eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
   eq5d_version <- temp$eq5d_version
   # check existence of columns 
   names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, names_eq5d = names_eq5d)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -644,43 +652,49 @@ eq5d_profile_lfs_distribution <- function(df,
 
 #' eq5d_profile_lfs_mean_utility: Number of observations in the LFS (Level Frequency Score) according to the EQ-5D values
 #' 
-#' @param df Data frame with the EQ-5D columns
+#' @param df Data frame with the EQ-5D dimension and value columns
 #' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary data frame
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' eq5d_profile_lfs_mean_utility(
 #'   example_data, 
 #'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'   eq5d_version = "3L",
-#'   country = "UK"
+#'   name_utility = "value",
+#'   eq5d_version = "3L"
 #' )
 
 eq5d_profile_lfs_mean_utility <- function(df, 
                       names_eq5d = NULL,
-                      eq5d_version = NULL,
-                      country){
+                      name_utility = NULL,
+                      eq5d_version = NULL){
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
+  temp <- .get_names(df = df, names_eq5d = names_eq5d,
+                     name_utility = name_utility, eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
+  name_utility <- temp$name_utility
   eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(names_eq5d, name_utility)
+  .check_columns(df, names_eq5d = names_eq5d, name_utility = name_utility)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
-  # further checks and data preparation
+  # further checks and data preparation. The Level Frequency Score comes from
+  # the dimensions; the values are taken as supplied.
   df <- .prep_eq5d(df = df, names = names_eq5d,
                    add_state = TRUE,
-                   add_lfs = TRUE, eq5d_version = eq5d_version,
-                   add_utility = TRUE, country = country)
+                   add_lfs = TRUE, eq5d_version = eq5d_version)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("lfs", "utility"), drop = FALSE]
 
   ### analysis ###
@@ -706,7 +720,7 @@ eq5d_profile_lfs_mean_utility <- function(df,
   # add row totals
   retval$Total <- rowSums(retval[, all_lfs, drop = FALSE])
   # tidy up
-  names(retval)[names(retval) == "utility"] <- "EQ-5D Value"
+  names(retval)[names(retval) == "utility"] <- "EQ-5D value"
   rownames(retval) <- NULL
 
   # return value
@@ -715,43 +729,49 @@ eq5d_profile_lfs_mean_utility <- function(df,
 
 #' eq5d_profile_lfs_utility_summary: Summary statistics of EQ-5D values by LFS (Level Frequency Score)
 #' 
-#' @param df Data frame with the EQ-5D columns
+#' @param df Data frame with the EQ-5D dimension and value columns
 #' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary data frame
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' eq5d_profile_lfs_utility_summary(
 #'   example_data, 
 #'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'   eq5d_version = "3L",
-#'   country = "UK"
+#'   name_utility = "value",
+#'   eq5d_version = "3L"
 #' )
 
 eq5d_profile_lfs_utility_summary <- function(df, 
                        names_eq5d = NULL,
-                       eq5d_version = NULL,
-                       country){
+                       name_utility = NULL,
+                       eq5d_version = NULL){
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
+  temp <- .get_names(df = df, names_eq5d = names_eq5d,
+                     name_utility = name_utility, eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
+  name_utility <- temp$name_utility
   eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(names_eq5d, name_utility)
+  .check_columns(df, names_eq5d = names_eq5d, name_utility = name_utility)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
-  # further checks and data preparation
+  # further checks and data preparation. The Level Frequency Score comes from
+  # the dimensions; the values are taken as supplied.
   df <- .prep_eq5d(df = df, names = names_eq5d, 
                    add_state = TRUE, 
-                   add_lfs = TRUE, eq5d_version = eq5d_version,
-                   add_utility = TRUE, country = country) 
+                   add_lfs = TRUE, eq5d_version = eq5d_version)
+  df <- .prep_utility(df = df, name = name_utility)
   
   ### analysis ###
   
@@ -771,6 +791,140 @@ eq5d_profile_lfs_utility_summary <- function(df,
   return(retval)
 }
 
+#' eq5d_profile_shannon: Shannon's informativity indices
+#'
+#' Reports Shannon's index H', its maximum H'max, and Shannon's evenness index
+#' J', for each EQ-5D dimension and for the health state as a whole. These are
+#' the informativity measures of chapter 4 of Devlin et al. (2020): how much of
+#' the classification system a sample actually uses.
+#'
+#' @details
+#' For a variable with categories \eqn{i} holding proportions \eqn{p_i} of the
+#' observations,
+#'
+#' \deqn{H' = -\sum_{i} p_i \log_2 p_i,\quad H'_{max} = \log_2 L,\quad
+#'       J' = H' / H'_{max}}
+#'
+#' where \eqn{L} is the number of categories the instrument allows. For a
+#' dimension that is 3 (EQ-5D-3L, EQ-5D-Y-3L) or 5 (EQ-5D-5L); for the health
+#' state it is \eqn{3^5 = 243} or \eqn{5^5 = 3125}. \eqn{L} is what the
+#' instrument allows, not what the sample happens to contain, so J' is
+#' comparable between samples.
+#'
+#' H' is in bits and rises with both the number of categories used and how
+#' evenly they are used. J' is H' as a fraction of its maximum, from 0 when
+#' every observation falls in one category to 1 when they are spread evenly
+#' over all \eqn{L}. Reporting both is the recommendation: H' alone cannot be
+#' compared between instruments with different numbers of categories.
+#'
+#' Each dimension is computed over its own non-missing responses. The health
+#' state row uses complete profiles only, since a profile with any dimension
+#' missing is not a health state.
+#'
+#' @param df Data frame with the EQ-5D columns
+#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param eq5d_version Version of the EQ-5D instrument: "3L", "5L" or "Y3L".
+#'   Matching is case-insensitive. It decides \eqn{L}, so it changes H'max and
+#'   J'.
+#' @param name_fu Character string for the follow-up column. If NULL (default),
+#'   the indices are reported for the sample as a whole.
+#' @param levels_fu Character vector containing the order of the values in the
+#'   follow-up column. If NULL (default value), the levels will be ordered in
+#'   the order of appearance in df.
+#' @return A data frame with one row per EQ-5D dimension and a final row for
+#'   the health state, and three columns per follow-up level: \code{H_<level>},
+#'   \code{Hmax_<level>} and \code{J_<level>}. Without \code{name_fu} there is
+#'   a single set of columns, suffixed \code{All}.
+#' @references
+#' Devlin N, Parkin D, Janssen B (2020). Methods for Analysing and Reporting
+#' EQ-5D Data. Springer. \doi{10.1007/978-3-030-47622-9}
+#' @export
+#' @examples
+#' eq5d_profile_shannon(
+#'   example_data,
+#'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"),
+#'   eq5d_version = "3L"
+#' )
+#'
+#' # By time point
+#' eq5d_profile_shannon(
+#'   example_data,
+#'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"),
+#'   eq5d_version = "3L",
+#'   name_fu = "time",
+#'   levels_fu = c("Pre-op", "Post-op")
+#' )
+
+eq5d_profile_shannon <- function(df,
+                      names_eq5d = NULL,
+                      eq5d_version = NULL,
+                      name_fu = NULL,
+                      levels_fu = NULL) {
+
+  ### data preparation ###
+
+  # With no follow-up column the whole sample is one group, as in .freqtab().
+  no_fu <- is.null(name_fu)
+  if (no_fu) {
+    df$`_all` <- "All"
+    name_fu <- "_all"
+    levels_fu <- "All"
+  }
+
+  # replace NULL names with defaults
+  temp <- .get_names(df = df,
+                     names_eq5d = names_eq5d,
+                     name_fu = name_fu, levels_fu = levels_fu,
+                     eq5d_version = eq5d_version)
+  names_eq5d <- temp$names_eq5d
+  name_fu <- temp$name_fu
+  levels_fu <- temp$levels_fu
+  eq5d_version <- temp$eq5d_version
+  # check existence of columns
+  names_all <- c(names_eq5d, name_fu)
+  .check_columns(df, names_eq5d = names_eq5d, name_fu = name_fu)
+  # all columns defined and exist; only leave relevant columns now
+  df <- df[, names_all, drop = FALSE]
+  # further checks and data preparation
+  df <- .prep_eq5d(df = df, names = names_eq5d, add_state = TRUE,
+                   eq5d_version = eq5d_version)
+  df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+
+  ### analysis ###
+
+  levels_eq5d <- c("mo", "sc", "ua", "pd", "ad")
+  n_levels <- if (eq5d_version %in% c("3L", "Y3L")) 3L else 5L
+  # The health state has one category per possible profile.
+  n_states <- n_levels^5L
+
+  empty <- vapply(levels_fu, function(f) !any(!is.na(df$fu) & df$fu == f),
+                  logical(1L))
+  if (any(empty))
+    warning("No observations for follow-up level",
+            if (sum(empty) > 1L) "s" else "", " ",
+            paste0("\"", levels_fu[empty], "\"", collapse = ", "),
+            ". Their indices are NA.", call. = FALSE)
+
+  retval <- data.frame(dimension = c(levels_eq5d, "Health state"),
+                       stringsAsFactors = FALSE)
+
+  for (f in levels_fu) {
+    rows <- !is.na(df$fu) & df$fu == f
+    idx <- rbind(
+      do.call(rbind, lapply(levels_eq5d,
+                            function(d) .shannon(df[[d]][rows], n_levels))),
+      .shannon(df$state[rows], n_states))
+    retval[[paste0("H_", f)]]    <- unname(idx[, "H"])
+    retval[[paste0("Hmax_", f)]] <- unname(idx[, "Hmax"])
+    retval[[paste0("J_", f)]]    <- unname(idx[, "J"])
+  }
+
+  rownames(retval) <- NULL
+
+  # return value
+  return(retval)
+}
+
 #' eq5d_profile_density_curve: Generate a Health State Density Curve (HSDC) for EQ-5D Data
 #'
 #' This function calculates and plots the Health State Density Curve (HSDC) for a given
@@ -781,12 +935,27 @@ eq5d_profile_lfs_utility_summary <- function(df,
 #' Density Index (HSDI), representing how sharply the observed distribution deviates from
 #' the diagonal.
 #'
+#' @details
+#' The HSDI is twice the area between the curve and the diagonal, so 0 is a
+#' perfectly even distribution across the observed profiles and 1 the most
+#' concentrated.
+#'
+#' Note what the index is relative to. \code{CumPropStates} is
+#' \code{seq_len(n) / n}, where \code{n} is the number of health state
+#' profiles **observed in these data**, not the 243 (EQ-5D-3L, EQ-5D-Y-3L) or
+#' 3125 (EQ-5D-5L) profiles the instrument allows. The index therefore
+#' describes how unevenly the observations are spread over the profiles that
+#' appear, and is not comparable between datasets in which different numbers of
+#' profiles appear.
+#'
 #' @param df Data frame with the EQ-5D columns
 #' @param names_eq5d Character vector of column names for the EQ-5D dimensions
 #' @param eq5d_version Version of the EQ-5D instrument
 #' @return A list containing:
 #'   \item{plot_data}{A data frame with the cumulative distribution of profiles}
-#'   \item{p}{A ggplot2 object showing the Health State Density Index}
+#'   \item{hsdi}{The Health State Density Index, unrounded. The plot subtitle
+#'     shows it rounded to three decimal places.}
+#'   \item{p}{A ggplot2 object showing the Health State Density Curve}
 #' @export
 #' @examples
 #' figure <- eq5d_profile_density_curve(
@@ -795,21 +964,20 @@ eq5d_profile_lfs_utility_summary <- function(df,
 #'             eq5d_version = "3L"
 #'           )
 #' figure$plot_data
+#' figure$hsdi
 #' figure$p
 #' @importFrom utils head
 
 eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
   
   # Retrieve validated names & version from helper function
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
+  temp <- .get_names(df = df, names_eq5d = names_eq5d, eq5d_version = eq5d_version)
   names_eq5d   <- temp$names_eq5d
   eq5d_version <- temp$eq5d_version
   
   # Check existence of columns
   names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df))) {
-    stop("Provided column names not in the data frame. Stopping.")
-  }
+  .check_columns(df, names_eq5d = names_eq5d)
   
   # Subset to relevant columns
   df <- df[, names_all, drop = FALSE]
@@ -844,7 +1012,10 @@ eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
     diff(c(0, profile_freq$CumPropObservations)) * 
       (head(c(0, profile_freq$CumPropStates), -1) + profile_freq$CumPropStates) / 2
   )
-  hsdi <- round(2 * hsdi_area, 3)
+  # Rounded only where it is displayed. The value returned below is the one
+  # that was computed: a user wanting the index for a table had to scrape it
+  # out of the plot subtitle, and got the rounded figure at that.
+  hsdi <- 2 * hsdi_area
   
   # Plot Health State Density Curve
   p <- ggplot2::ggplot(profile_freq, ggplot2::aes(
@@ -861,7 +1032,7 @@ eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
     ) +
     ggplot2::labs(
       title    = paste0("Health State Density Curve (HSDC)"),
-      subtitle = paste0("HSDI = ", hsdi),
+      subtitle = paste0("HSDI = ", round(hsdi, 3)),
       x        = "Cumulative proportion of observations",
       y        = "Cumulative proportion of profiles"
     ) +
@@ -869,10 +1040,15 @@ eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
     ggplot2::coord_fixed(ratio = 1) +
     # Limit x,y range from 0 to 1
     ggplot2::scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
-    ggplot2::scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
-    ggplot2::theme_minimal()
-  
-  return(list(plot_data = profile_freq, p = p))
+    ggplot2::scale_y_continuous(limits = c(0, 1), expand = c(0, 0))
+
+  # Through the shared theme, like every other plot function, rather than
+  # ggplot2::theme_minimal() applied here: the HSDC plot used to be the one
+  # that looked different from the rest.
+  # `hsdi` is new in 2.1.0 and sits between the two elements that were always
+  # here, so anything reading result$plot_data or result$p is unaffected.
+  return(list(plot_data = profile_freq, hsdi = hsdi,
+              p = .modify_ggplot_theme(p = p)))
 }
 
 #' eq5d_vas_summary: EQ VAS Score by timepoints
@@ -881,7 +1057,18 @@ eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
 #' @param name_vas Character string for the VAS column
 #' @param name_fu Character string for the follow-up column
 #' @param levels_fu Character vector containing the order of the values in the follow-up column. 
-#' @return Summary data frame
+#' @return Summary data frame with one row per statistic and one column per
+#'   follow-up level, in the order given by \code{levels_fu}.
+#' @details
+#' Skewness and kurtosis are the population (biased) estimators
+#' \eqn{m_3 / m_2^{3/2}} and \eqn{m_4 / m_2^2}, as returned by
+#' \code{moments::skewness()} and \code{moments::kurtosis()}.
+#'
+#' The kurtosis is **non-excess**: a normal distribution gives 3, not 0. The
+#' row is labelled "Kurtosis (non-excess)" so that the output says which
+#' convention it uses. Stata's \code{summarize, detail} reports the same
+#' quantity. Excel's \code{KURT()} reports *excess* kurtosis with a
+#' sample-bias correction, so it is roughly 3 lower for the same data.
 #' @export
 #' @examples
 #' eq5d_vas_summary(
@@ -906,8 +1093,7 @@ eq5d_vas_summary <- function(df,
   name_vas <- temp$name_vas
   # check existence of columns 
   names_all <- c(name_vas, name_fu)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, name_vas = name_vas, name_fu = name_fu)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -948,8 +1134,7 @@ eq5d_vas_distribution_table <- function(df,
   name_vas <- temp$name_vas
   # check existence of columns 
   names_all <- c(name_vas)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, name_vas = name_vas)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -989,55 +1174,60 @@ eq5d_vas_distribution_table <- function(df,
 
 #' eq5d_utility_summary: EQ-5D values: by timepoints
 #' 
-#' @param df Data frame with the EQ-5D and follow-up columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param df Data frame with the EQ-5D value and follow-up columns
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_fu Character string for the follow-up column
 #' @param levels_fu Character vector containing the order of the values in the follow-up column. 
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
-#' @return Summary data frame
+#' @return Summary data frame with one row per statistic and one column per
+#'   follow-up level, in the order given by \code{levels_fu}.
+#' @details
+#' Skewness and kurtosis are the population (biased) estimators
+#' \eqn{m_3 / m_2^{3/2}} and \eqn{m_4 / m_2^2}, as returned by
+#' \code{moments::skewness()} and \code{moments::kurtosis()}.
+#'
+#' The kurtosis is **non-excess**: a normal distribution gives 3, not 0. The
+#' row is labelled "Kurtosis (non-excess)" so that the output says which
+#' convention it uses. Stata's \code{summarize, detail} reports the same
+#' quantity. Excel's \code{KURT()} reports *excess* kurtosis with a
+#' sample-bias correction, so it is roughly 3 lower for the same data.
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' eq5d_utility_summary(
 #'   example_data,
-#'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
+#'   name_utility = "value",
 #'   name_fu = "time",
-#'   levels_fu = c('Pre-op', 'Post-op'),
-#'   eq5d_version = "3L",
-#'   country = "UK"
+#'   levels_fu = c('Pre-op', 'Post-op')
 #' )
 
 eq5d_utility_summary <- function(df, 
-                      names_eq5d = NULL,
+                      name_utility = NULL,
                       name_fu = NULL,
-                      levels_fu = NULL,
-                      eq5d_version = NULL,
-                      country){
+                      levels_fu = NULL){
   
   ### data preparation ###
   
   # replace NULL names with defaults
   temp <- .get_names(df = df, 
-                     names_eq5d = names_eq5d, 
-                     name_fu = name_fu, levels_fu = levels_fu,
-                     eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
+                     name_utility = name_utility,
+                     name_fu = name_fu, levels_fu = levels_fu)
+  name_utility <- temp$name_utility
   name_fu <- temp$name_fu
   levels_fu <- temp$levels_fu
-  eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_utility, name_fu)
+  .check_columns(df, name_utility = name_utility, name_fu = name_fu)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
-  # further checks and data preparation
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+  # further checks and data preparation. .prep_utility() runs last so that the
+  # other renames are done before the "utility" name is claimed.
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("fu", "utility"), drop = FALSE]
 
   ### analysis ###
@@ -1051,40 +1241,35 @@ eq5d_utility_summary <- function(df,
 
 #' eq5d_utility_summary_by_group:EQ-5D values: by groupvar
 #' 
-#' @param df Data frame with the EQ-5D, follow-up and grouping columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param df Data frame with the EQ-5D value and grouping columns
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_groupvar Character string for the grouping column. If NULL (default), the analysis is performed on the full population.
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country.
 #' @return Summary data frame
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' eq5d_utility_summary_by_group(
 #'   example_data,
-#'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"),
-#'   name_groupvar = "procedure",
-#'   eq5d_version = "3L",
-#'   country = "UK"
+#'   name_utility = "value",
+#'   name_groupvar = "procedure"
 #' )
 
 eq5d_utility_summary_by_group <- function(df,
-                      names_eq5d = NULL,
-                      name_groupvar = NULL,
-                      eq5d_version = NULL,
-                      country){
+                      name_utility = NULL,
+                      name_groupvar = NULL){
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(df = df, 
-                     names_eq5d = names_eq5d, 
-                     eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
-  eq5d_version <- temp$eq5d_version
+  temp <- .get_names(df = df, name_utility = name_utility)
+  name_utility <- temp$name_utility
   # check existence of columns 
-  names_all <- c(names_eq5d, name_groupvar)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_utility, name_groupvar)
+  .check_columns(df, name_utility = name_utility, name_groupvar = name_groupvar)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -1093,9 +1278,16 @@ eq5d_utility_summary_by_group <- function(df,
   } else {
     names(df)[names(df) == name_groupvar] <- "groupvar"
   }
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+  # Each group becomes a column below, so the group labels have to be strings.
+  # A missing group value is kept as its own group, labelled "NA", which is
+  # what eq5d_profile_level_summary_by_group() does with the same data. Left
+  # as NA it cannot name a column, and the pivot at the end of this function
+  # failed with "missing value where TRUE/FALSE needed"; left as a factor, the
+  # pivot would index by the level's integer code rather than its label.
+  df$groupvar <- as.character(df$groupvar)
+  df$groupvar[is.na(df$groupvar)] <- "NA"
+
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("groupvar", "utility"), drop = FALSE]
 
   ### analysis ###
@@ -1133,16 +1325,16 @@ eq5d_utility_summary_by_group <- function(df,
 
 #' eq5d_utility_norms_comparison:EQ-5D values: by age and groupvar
 #' 
-#' @param df Data frame with the EQ-5D, age, follow-up and grouping columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param df Data frame with the EQ-5D value, age, follow-up and grouping columns
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_fu Character string for the follow-up column
 #' @param levels_fu Character vector containing the order of the values in the follow-up column.
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @param name_groupvar Character string for the grouping column. If NULL (default), the analysis is performed on the full population.
 #' @param name_age Character string for the age column
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary data frame
 #' @export
 #' @examples
@@ -1151,41 +1343,39 @@ eq5d_utility_summary_by_group <- function(df,
 #'   levels = c("20 to 29", "30 to 39", "40 to 49", "50 to 59", "60 to 69", "70 to 79", "80 to 89")
 #' )
 #' example_data <- example_data[example_data$gender %in% c("Male", "Female"),]
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' eq5d_utility_norms_comparison(
 #'   example_data,
-#'   names_eq5d = c("mo", "sc", "ua", "pd", "ad"),
+#'   name_utility = "value",
 #'   name_fu = "time",
 #'   levels_fu = c('Pre-op', 'Post-op'),
 #'   name_groupvar = "gender",
-#'   name_age = "ageband",
-#'   eq5d_version = "3L",
-#'   country = "UK"
+#'   name_age = "ageband"
 #' )
 
 eq5d_utility_norms_comparison <- function(df,
-                      names_eq5d = NULL,
+                      name_utility = NULL,
                       name_fu = NULL,
                       levels_fu = NULL,
                       name_groupvar = NULL,
-                      name_age,
-                      eq5d_version = NULL,
-                      country){
+                      name_age){
   
   ### data preparation ###
   
   # replace NULL names with defaults
   temp <- .get_names(df = df,
-                     names_eq5d = names_eq5d, 
-                     name_fu = name_fu, levels_fu = levels_fu,
-                     eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
+                     name_utility = name_utility,
+                     name_fu = name_fu, levels_fu = levels_fu)
+  name_utility <- temp$name_utility
   name_fu <- temp$name_fu
   levels_fu <- temp$levels_fu
-  eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d, name_fu, name_groupvar, name_age)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_utility, name_fu, name_groupvar, name_age)
+  .check_columns(df, name_utility = name_utility,
+                 name_fu = name_fu,
+                 name_groupvar = name_groupvar,
+                 name_age = name_age)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -1195,10 +1385,8 @@ eq5d_utility_norms_comparison <- function(df,
     names(df)[names(df) == name_groupvar] <- "groupvar"
   }
   names(df)[names(df) == name_age]      <- "age"
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("groupvar", "age", "fu", "utility"), drop = FALSE]
 
   # split age into categories
@@ -1212,7 +1400,7 @@ eq5d_utility_norms_comparison <- function(df,
   } else if (is.factor(df$age)) {
     names(df)[names(df) == "age"] <- "age_cat"
   } else {
-    stop("The 'age' column must be either numeric or factor. Stopping.")
+    stop("The 'age' column must be either numeric or factor.", call. = FALSE)
   }
 
   ### analysis ###
@@ -1319,9 +1507,10 @@ eq5d_profile_pchc_by_group_plot <- function(df,
 
   # Check columns exist
   names_all <- c(name_id, name_groupvar, names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df))) {
-    stop("Provided column names not in dataframe. Stopping.")
-  }
+  .check_columns(df, name_id = name_id,
+                 name_groupvar = name_groupvar,
+                 names_eq5d = names_eq5d,
+                 name_fu = name_fu)
 
   # Keep only relevant columns
   df <- df[, names_all, drop = FALSE]
@@ -1407,7 +1596,7 @@ eq5d_profile_pchc_by_group_plot <- function(df,
 
 #' eq5d_profile_better_dimensions_by_group_plot: Percentage of Respondents Who Improved in Each EQ-5D Dimension, by Group
 #' This function calculates how many respondents improved in each dimension between
-#' two time points and summarizes the results for each group. The, it prodcuces 
+#' two time points and summarizes the results for each group. It then produces
 #' a dimension-focused chart illustrating improvement percentages by dimension.
 #' @param df Data frame containing EQ-5D columns, a grouping variable, an ID column, and a follow-up column
 #' @param name_id Character string for the patient ID column
@@ -1451,9 +1640,10 @@ eq5d_profile_better_dimensions_by_group_plot <- function(df,
   
   # Check columns exist
   names_all <- c(name_id, name_groupvar, names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df))) {
-    stop("Provided column names not in dataframe. Stopping.")
-  }
+  .check_columns(df, name_id = name_id,
+                 name_groupvar = name_groupvar,
+                 names_eq5d = names_eq5d,
+                 name_fu = name_fu)
   
   # Keep only relevant columns
   df <- df[, names_all, drop = FALSE]
@@ -1487,10 +1677,19 @@ eq5d_profile_better_dimensions_by_group_plot <- function(df,
 
   df_imp <- df[df$state == "Improve", c("groupvar", "fu", dimension_names), drop = FALSE]
   # pivot longer manually
+  # No respondent in this category is ordinary data, not an error, but there
+  # is no chart to draw from it. Said plainly: `name = dn` is length 1, so an
+  # empty subset used to fail inside data.frame() with "arguments imply
+  # differing number of rows: 0, 1".
+  if (nrow(df_imp) == 0L)
+    stop("No respondent was classified as improving, so there is nothing to plot. ",
+         "eq5d_profile_pchc_table() shows the classification counts.",
+         call. = FALSE)
+
   df_long <- do.call(rbind, lapply(dimension_names, function(dn) {
     data.frame(groupvar = df_imp$groupvar,
                fu       = df_imp$fu,
-               name     = dn,
+               name     = rep(dn, nrow(df_imp)),
                value    = df_imp[[dn]],
                stringsAsFactors = FALSE)
   }))
@@ -1603,9 +1802,10 @@ eq5d_profile_worse_dimensions_by_group_plot <- function(df,
   
   # Check columns exist
   names_all <- c(name_id, name_groupvar, names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df))) {
-    stop("Provided column names not in dataframe. Stopping.")
-  }
+  .check_columns(df, name_id = name_id,
+                 name_groupvar = name_groupvar,
+                 names_eq5d = names_eq5d,
+                 name_fu = name_fu)
   
   # Keep only relevant columns
   df <- df[, names_all, drop = FALSE]
@@ -1641,10 +1841,19 @@ eq5d_profile_worse_dimensions_by_group_plot <- function(df,
 
   df_wor <- df[df$state == "Worsen", c("groupvar", "fu", dimension_names), drop = FALSE]
   # pivot longer manually
+  # No respondent in this category is ordinary data, not an error, but there
+  # is no chart to draw from it. Said plainly: `name = dn` is length 1, so an
+  # empty subset used to fail inside data.frame() with "arguments imply
+  # differing number of rows: 0, 1".
+  if (nrow(df_wor) == 0L)
+    stop("No respondent was classified as worsening, so there is nothing to plot. ",
+         "eq5d_profile_pchc_table() shows the classification counts.",
+         call. = FALSE)
+
   df_long <- do.call(rbind, lapply(dimension_names, function(dn) {
     data.frame(groupvar = df_wor$groupvar,
                fu       = df_wor$fu,
-               name     = dn,
+               name     = rep(dn, nrow(df_wor)),
                value    = df_wor[[dn]],
                stringsAsFactors = FALSE)
   }))
@@ -1757,9 +1966,10 @@ eq5d_profile_mixed_dimensions_by_group_plot <- function(df,
   
   # Check columns exist
   names_all <- c(name_id, name_groupvar, names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df))) {
-    stop("Provided column names not in dataframe. Stopping.")
-  }
+  .check_columns(df, name_id = name_id,
+                 name_groupvar = name_groupvar,
+                 names_eq5d = names_eq5d,
+                 name_fu = name_fu)
   
   # Keep only relevant columns
   df <- df[, names_all, drop = FALSE]
@@ -1803,10 +2013,19 @@ eq5d_profile_mixed_dimensions_by_group_plot <- function(df,
   # 2a) Summarize dimension-level improvements & worsenings among "Mixed change" patients
   df_mix <- df[df$state == "Mixed change", c("groupvar", "fu", dimension_names), drop = FALSE]
   # pivot longer manually
+  # No respondent in this category is ordinary data, not an error, but there
+  # is no chart to draw from it. Said plainly: `name = dn` is length 1, so an
+  # empty subset used to fail inside data.frame() with "arguments imply
+  # differing number of rows: 0, 1".
+  if (nrow(df_mix) == 0L)
+    stop("No respondent was classified as a mixed change, so there is nothing to plot. ",
+         "eq5d_profile_pchc_table() shows the classification counts.",
+         call. = FALSE)
+
   df_long <- do.call(rbind, lapply(dimension_names, function(dn) {
     data.frame(groupvar = df_mix$groupvar,
                fu       = df_mix$fu,
-               name     = dn,
+               name     = rep(dn, nrow(df_mix)),
                value    = df_mix[[dn]],
                stringsAsFactors = FALSE)
   }))
@@ -1890,52 +2109,70 @@ eq5d_profile_mixed_dimensions_by_group_plot <- function(df,
 #' points. A diagonal reference line indicates no change; points above the line reflect
 #' improvement, and points below indicate deterioration.
 #'
-#' @param df A data frame containing EQ-5D columns, a grouping variable, an ID column, and a follow-up column
+#' @details
+#' The ranking is over the health states that occur in \code{df}, ordered by
+#' the values in \code{name_utility}: the best observed state is rank 1 and
+#' the worst is rank \emph{n}, where \emph{n} is the number of distinct
+#' states observed. Earlier versions of this function valued every state the
+#' instrument allows and ranked over all of them -- 243 for the EQ-5D-3L,
+#' 3,125 for the 5L -- which needed a value set rather than a column of
+#' values. The order of the plotted points is the same either way; the rank
+#' numbers and the axis limits are not.
+#'
+#' Where one state carries more than one value -- which happens when the
+#' values depend on something besides the state, as in the NICE DSU mapping,
+#' where they depend on age and sex -- the state is ranked by its mean value,
+#' with a warning.
+#'
+#' @param df A data frame containing EQ-5D columns, a value column, an ID column, and a follow-up column
 #' @param names_eq5d A character vector of EQ-5D dimension names
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are used to rank the observed health states; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_fu A character string for the follow-up column
 #' @param levels_fu A character vector of length 2, specifying the order of the follow-up levels (e.g., c("Pre-op","Post-op"))
 #' @param name_id A character string for the patient ID column
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
 #' @return A list with components:
 #'   \item{plot_data}{The plot data with ranks and classification.}
 #'   \item{p}{A \code{ggplot2} object displaying the HPG scatter plot.}
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' tmp <- eq5d_profile_health_profile_grid(
 #'            df = example_data, 
 #'            names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
+#'            name_utility = "value",
 #'            name_fu = "time", 
 #'            levels_fu = c("Pre-op", "Post-op"), 
-#'            name_id = "id", 
-#'            eq5d_version = "3L", 
-#'            country = "UK"
+#'            name_id = "id"
 #'        )
 
 eq5d_profile_health_profile_grid <- function(df,
                          names_eq5d,
+                         name_utility = NULL,
                          name_fu,
                          levels_fu = NULL,
-                         name_id,
-                         eq5d_version,
-                         country) {
+                         name_id) {
   ### 1) Data Preparation ###
   # Replace NULL names with defaults (helper function that sets names_eq5d, name_fu, etc.)
   temp <- .get_names(df = df,
                      names_eq5d = names_eq5d,
+                     name_utility = name_utility,
                      name_fu = name_fu,
-                     levels_fu = levels_fu,
-                     eq5d_version = eq5d_version)
+                     levels_fu = levels_fu)
   names_eq5d <- temp$names_eq5d
+  name_utility <- temp$name_utility
   name_fu    <- temp$name_fu
   levels_fu  <- temp$levels_fu
-  eq5d_version <- temp$eq5d_version
   
   # Check columns exist
-  names_all <- c(name_id,  names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df))) {
-    stop("Provided column names not in dataframe. Stopping.")
-  }
+  names_all <- c(name_id,  names_eq5d, name_utility, name_fu)
+  .check_columns(df, name_id = name_id,
+                 names_eq5d = names_eq5d,
+                 name_utility = name_utility,
+                 name_fu = name_fu)
   
   # Keep only relevant columns
   df <- df[, names_all, drop = FALSE]
@@ -1943,9 +2180,35 @@ eq5d_profile_health_profile_grid <- function(df,
   # Rename for internal use
   names(df)[names(df) == name_id] <- "id"
 
-  # Prepare EQ-5D & Follow-up columns
-  df <- .prep_eq5d(df = df, names = names_eq5d)
+  # Prepare EQ-5D & Follow-up columns. add_state gives each row its health
+  # state, which is what the supplied value belongs to.
+  df <- .prep_eq5d(df = df, names = names_eq5d, add_state = TRUE)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+
+  # The value set, as far as the data show it: one row per observed state,
+  # ordered best to worst. This replaces valuing every state the instrument
+  # allows, which a column of values cannot supply.
+  vs <- df[!is.na(df$state) & !is.na(df$utility), c("state", "utility"),
+           drop = FALSE]
+  if (nrow(vs) == 0L)
+    stop("No health state has a value in `", name_utility,
+         "`, so the states cannot be ranked.", call. = FALSE)
+  by_state <- split(vs$utility, vs$state)
+  n_values <- vapply(by_state, function(u) length(unique(u)), integer(1L))
+  if (any(n_values > 1L))
+    warning(sum(n_values > 1L), " health state(s) carry more than one value ",
+            "in `", name_utility, "`; each has been ranked by its mean. ",
+            "Values that depend on more than the health state, such as the ",
+            "age- and sex-dependent NICE DSU mapping, do not give a single ",
+            "ranking of states.", call. = FALSE)
+  vs <- data.frame(profile = as.integer(names(by_state)),
+                   utility = vapply(by_state, mean, numeric(1L)),
+                   stringsAsFactors = FALSE)
+
+  # .pchc() builds its own `state` column (the classification), and `utility`
+  # has served its purpose, so neither is carried into it.
+  df <- df[, setdiff(names(df), c("state", "utility")), drop = FALSE]
 
   # Sort by (id, fu)
   df <- df[order(df$id, df$fu), , drop = FALSE]
@@ -1964,9 +2227,7 @@ eq5d_profile_health_profile_grid <- function(df,
   )
 
   ### 3) Summarize for HPG ###
-  # Create value set
-  vs <- data.frame(profile = make_all_EQ_indexes(version = eq5d_version))
-  vs$utility <- eq5d(vs$profile, country = country, version = eq5d_version)
+  # Rank the observed states, best first
   vs <- vs[order(-vs$utility), , drop = FALSE]
   vs$rank <- seq_len(nrow(vs))
   
@@ -2032,46 +2293,51 @@ eq5d_profile_health_profile_grid <- function(df,
 
 #' eq5d_profile_lss_utility_plot: EQ-5D values plotted against LSS
 #' 
-#' @param df Data frame with the EQ-5D columns
+#' @param df Data frame with the EQ-5D dimension and value columns
 #' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary plot and data used for plotting
 #' @export
 #' @examples
 #' df <- data.frame(make_all_EQ_states(version = "5L"))
+#' df$value <- eq5d5l(df[, c("mo", "sc", "ua", "pd", "ad")], country = "US")
 #' tmp <- eq5d_profile_lss_utility_plot(
 #'  df, 
 #'  names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'  eq5d_version = "5L", 
-#'  country = "US"
+#'  name_utility = "value",
+#'  eq5d_version = "5L"
 #' )
 #' tmp$p
 #' tmp$plot_data
 
 eq5d_profile_lss_utility_plot <- function(df,
                        names_eq5d = NULL,
-                       eq5d_version = NULL,
-                       country){
+                       name_utility = NULL,
+                       eq5d_version = NULL){
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
+  temp <- .get_names(df = df, names_eq5d = names_eq5d,
+                     name_utility = name_utility, eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
+  name_utility <- temp$name_utility
   eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(names_eq5d, name_utility)
+  .check_columns(df, names_eq5d = names_eq5d, name_utility = name_utility)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
-  # further checks and data preparation
+  # further checks and data preparation. The score comes from the dimensions;
+  # the values are taken as supplied.
   df <- .prep_eq5d(df = df, names = names_eq5d,
                    add_state = TRUE,
-                   add_lss = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+                   add_lss = TRUE, eq5d_version = eq5d_version)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("lss", "utility"), drop = FALSE]
 
   ### analysis ###
@@ -2089,23 +2355,52 @@ eq5d_profile_lss_utility_plot <- function(df,
   x_breaks <- 1:100
   y_breaks <- seq(from = -1, to = 1, by = 0.2)
 
-  # pivot longer for segment plot
-  seg_data <- do.call(rbind, list(
-    data.frame(lss = plot_data$lss, name = "Median", value = plot_data$median),
+  # The three summaries used to be drawn as three identical horizontal
+  # segments at the same x. Where they coincide -- LSS 5 and 15 for the
+  # EQ-5D-3L, LSS 5 and 25 for the 5L, each reachable by exactly one health
+  # state -- they were drawn on top of one another and only the last was
+  # visible, so the median vanished at the two most interpretable points on
+  # the plot.
+  #
+  # The lowest and highest values are now short horizontal ticks joined by a
+  # vertical line, and the median is a point drawn after them, so it is always
+  # on top. Shape as well as colour separates the median from the two range
+  # marks, so the distinction survives in greyscale.
+  lvl <- c("Median", "Lowest", "Highest")
+
+  tick_data <- do.call(rbind, list(
     data.frame(lss = plot_data$lss, name = "Lowest",  value = plot_data$min),
     data.frame(lss = plot_data$lss, name = "Highest", value = plot_data$max)
   ))
-  seg_data$name <- factor(seg_data$name, levels = c("Median", "Lowest", "Highest"))
+  tick_data$name <- factor(tick_data$name, levels = lvl)
+
+  median_data <- data.frame(lss = plot_data$lss,
+                            name = factor("Median", levels = lvl),
+                            value = plot_data$median)
 
   # plot
   p <- ggplot() +
-    # plot median, min and max
-    geom_segment(data = seg_data,
+    # connect lowest and highest with a vertical line
+    geom_segment(data = plot_data,
+                 aes(x = .data$lss, xend = .data$lss,
+                     y = .data$min, yend = .data$max),
+                 colour = "grey50") +
+    # lowest and highest, as short horizontal ticks
+    geom_segment(data = tick_data,
                  aes(x = .data$lss - 0.2, xend = .data$lss + 0.2,
                      y = .data$value, yend = .data$value,
                      colour = .data$name)) +
-    # connect values with a line segment
-    geom_segment(data = plot_data, aes(x = .data$lss, xend = .data$lss, y = min, yend = max)) +
+    # median last, so that it is visible even where all three coincide
+    geom_point(data = median_data,
+               aes(x = .data$lss, y = .data$value,
+                   colour = .data$name, shape = .data$name),
+               size = 2) +
+    scale_colour_manual(values = c(Median = "#BF2518", Lowest = "#5782BF",
+                                   Highest = "#69AB3E"),
+                        limits = lvl, drop = FALSE) +
+    # 45 is a horizontal dash, matching the ticks drawn for those two series
+    scale_shape_manual(values = c(Median = 16, Lowest = 45, Highest = 45),
+                       limits = lvl, drop = FALSE) +
     # plot title
     ggtitle("EQ-5D values plotted against the LSS (Level Sum Score)") +
     # manipulate x-axis
@@ -2127,45 +2422,51 @@ eq5d_profile_lss_utility_plot <- function(df,
 
 #' eq5d_profile_lfs_utility_plot: EQ-5D values plotted against LFS
 #' 
-#' @param df Data frame with the EQ-5D columns
+#' @param df Data frame with the EQ-5D dimension and value columns
 #' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary plot and data used for plotting
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' tmp <- eq5d_profile_lfs_utility_plot(
 #'  example_data, 
 #'  names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'  eq5d_version = "3L",
-#'  country = "UK"
+#'  name_utility = "value",
+#'  eq5d_version = "3L"
 #' )
 #' tmp$p
 #' tmp$plot_data
 
 eq5d_profile_lfs_utility_plot <- function(df,
                         names_eq5d = NULL,
-                        eq5d_version = NULL,
-                        country){
+                        name_utility = NULL,
+                        eq5d_version = NULL){
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
+  temp <- .get_names(df = df, names_eq5d = names_eq5d,
+                     name_utility = name_utility, eq5d_version = eq5d_version)
   names_eq5d <- temp$names_eq5d
+  name_utility <- temp$name_utility
   eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(names_eq5d, name_utility)
+  .check_columns(df, names_eq5d = names_eq5d, name_utility = name_utility)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
-  # further checks and data preparation
+  # further checks and data preparation. The score comes from the dimensions;
+  # the values are taken as supplied.
   df <- .prep_eq5d(df = df, names = names_eq5d,
                    add_state = TRUE,
-                   add_lfs = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+                   add_lfs = TRUE, eq5d_version = eq5d_version)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("lfs", "utility"), drop = FALSE]
 
   ### analysis ###
@@ -2191,23 +2492,47 @@ eq5d_profile_lfs_utility_plot <- function(df,
   x_labels <- lfs_levels[i]
   y_breaks <- seq(from = -1, to = 1, by = 0.2)
   
-  # pivot longer for segment plot
-  seg_data2 <- do.call(rbind, list(
-    data.frame(lfs = plot_data$lfs, lfs_f = plot_data$lfs_f, name = "Median", value = plot_data$median),
-    data.frame(lfs = plot_data$lfs, lfs_f = plot_data$lfs_f, name = "Lowest",  value = plot_data$min),
-    data.frame(lfs = plot_data$lfs, lfs_f = plot_data$lfs_f, name = "Highest", value = plot_data$max)
+  # Same construction, and the same defect, as eq5d_profile_lss_utility_plot():
+  # an LFS group reachable by a single health state has median, lowest and
+  # highest all equal -- 500, 050 and 005 for the EQ-5D-3L -- and the three
+  # identical segments hid one another, taking the median with them. Ticks for
+  # the range, a point for the median, drawn last.
+  lvl <- c("Median", "Lowest", "Highest")
+
+  tick_data <- do.call(rbind, list(
+    data.frame(lfs_f = plot_data$lfs_f, name = "Lowest",  value = plot_data$min),
+    data.frame(lfs_f = plot_data$lfs_f, name = "Highest", value = plot_data$max)
   ))
-  seg_data2$name <- factor(seg_data2$name, levels = c("Median", "Lowest", "Highest"))
+  tick_data$name <- factor(tick_data$name, levels = lvl)
+
+  median_data <- data.frame(lfs_f = plot_data$lfs_f,
+                            name = factor("Median", levels = lvl),
+                            value = plot_data$median)
 
   # plot
   p <- ggplot() +
-    # plot median, min and max
-    geom_segment(data = seg_data2,
-                 aes(x = as.numeric(.data$lfs_f) - 0.5, xend = as.numeric(.data$lfs_f) + 0.5,
+    # connect lowest and highest with a vertical line
+    geom_segment(data = plot_data,
+                 aes(x = as.numeric(.data$lfs_f), xend = as.numeric(.data$lfs_f),
+                     y = .data$min, yend = .data$max),
+                 colour = "grey50") +
+    # lowest and highest, as short horizontal ticks
+    geom_segment(data = tick_data,
+                 aes(x = as.numeric(.data$lfs_f) - 0.5,
+                     xend = as.numeric(.data$lfs_f) + 0.5,
                      y = .data$value, yend = .data$value,
                      colour = .data$name)) +
-    # connect values with a line segment
-    geom_segment(data = plot_data, aes(x = as.numeric(.data$lfs_f), xend = as.numeric(.data$lfs_f), y = min, yend = max)) +
+    # median last, so that it is visible even where all three coincide
+    geom_point(data = median_data,
+               aes(x = as.numeric(.data$lfs_f), y = .data$value,
+                   colour = .data$name, shape = .data$name),
+               size = 2) +
+    scale_colour_manual(values = c(Median = "#BF2518", Lowest = "#5782BF",
+                                   Highest = "#69AB3E"),
+                        limits = lvl, drop = FALSE) +
+    # 45 is a horizontal dash, matching the ticks drawn for those two series
+    scale_shape_manual(values = c(Median = 16, Lowest = 45, Highest = 45),
+                       limits = lvl, drop = FALSE) +
     # plot title
     ggtitle("EQ-5D values plotted against the LFS (Level Frequency Score)") +
     # manipulate x-axis
@@ -2253,8 +2578,7 @@ eq5d_vas_histogram <- function(df, name_vas = NULL){
   name_vas <- temp$name_vas
   # check existence of columns 
   names_all <- c(name_vas)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  .check_columns(df, name_vas = name_vas)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -2327,56 +2651,49 @@ eq5d_vas_grouped_distribution_plot <- function(df, name_vas = NULL){
 
 #' eq5d_utility_over_time_plot: EQ-5D values by timepoints: mean values and 95\% confidence intervals
 #' 
-#' @param df Data frame with the VAS columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param df Data frame with the EQ-5D value and follow-up columns
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_fu Character string for the follow-up column
 #' @param levels_fu Character vector containing the order of the values in the follow-up column. 
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary plot and data used for plotting
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' tmp <- eq5d_utility_over_time_plot(
 #'  example_data,
-#'  names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
+#'  name_utility = "value",
 #'  name_fu = "time",
-#'  levels_fu = c('Pre-op', 'Post-op'),
-#'  eq5d_version = "3L",
-#'  country = "UK"
+#'  levels_fu = c('Pre-op', 'Post-op')
 #' )
 #' tmp$p
 #' tmp$plot_data
 
 eq5d_utility_over_time_plot <- function(df,
-                       names_eq5d = NULL,
+                       name_utility = NULL,
                        name_fu = NULL,
-                       levels_fu = NULL,
-                       eq5d_version = NULL,
-                       country) {
+                       levels_fu = NULL) {
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(df = df, names_eq5d = names_eq5d, 
-                     name_fu = name_fu, levels_fu = levels_fu,
-                     eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
+  temp <- .get_names(df = df, name_utility = name_utility,
+                     name_fu = name_fu, levels_fu = levels_fu)
+  name_utility <- temp$name_utility
   name_fu <- temp$name_fu
   levels_fu <- temp$levels_fu
-  eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d, name_fu)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_utility, name_fu)
+  .check_columns(df, name_utility = name_utility, name_fu = name_fu)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("fu", "utility"), drop = FALSE]
   
   ### analysis ###
@@ -2406,41 +2723,37 @@ eq5d_utility_over_time_plot <- function(df,
 
 #' eq5d_utility_by_group_plot: Mean EQ-5D values and 95\% confidence intervals: all vs by groupvar
 #' 
-#' @param df Data frame with the EQ-5D and grouping columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param df Data frame with the EQ-5D value and grouping columns
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_groupvar Character string for the grouping column. If NULL (default), the analysis is performed on the full population.
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country.
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary plot and data used for plotting
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' tmp <- eq5d_utility_by_group_plot(
 #'  example_data,
-#'  names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'  name_groupvar = "procedure",
-#'  eq5d_version = "3L",
-#'  country = "UK"
+#'  name_utility = "value",
+#'  name_groupvar = "procedure"
 #' )
 #' tmp$p
 #' tmp$plot_data
 
 eq5d_utility_by_group_plot <- function(df,
-                       names_eq5d = NULL,
-                       name_groupvar = NULL,
-                       eq5d_version = NULL,
-                       country) {
+                       name_utility = NULL,
+                       name_groupvar = NULL) {
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
-  eq5d_version <- temp$eq5d_version
+  temp <- .get_names(df = df, name_utility = name_utility)
+  name_utility <- temp$name_utility
   # check existence of columns 
-  names_all <- c(name_groupvar, names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_groupvar, name_utility)
+  .check_columns(df, name_groupvar = name_groupvar, name_utility = name_utility)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -2449,9 +2762,7 @@ eq5d_utility_by_group_plot <- function(df,
   } else {
     names(df)[names(df) == name_groupvar] <- "groupvar"
   }
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("groupvar", "utility"), drop = FALSE]
 
   ### analysis ###
@@ -2493,52 +2804,49 @@ eq5d_utility_by_group_plot <- function(df,
 
 #' eq5d_utility_change_by_group_plot: EQ-5D values: smoothed lines and confidence intervals by groupvar
 #' 
-#' @param df Data frame with the EQ-5D, follow-up and grouping columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param df Data frame with the EQ-5D value, follow-up and grouping columns
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_fu Character string for the follow-up column
 #' @param levels_fu Character vector containing the order of the values in the follow-up column.
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @param name_groupvar Character string for the grouping column. If NULL (default), the analysis is performed on the full population.
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country.
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary plot and data used for plotting
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' tmp <- eq5d_utility_change_by_group_plot(
 #'  example_data,
-#'  names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
+#'  name_utility = "value",
 #'  name_fu = "time",
 #'  levels_fu = c('Pre-op', 'Post-op'),
-#'  name_groupvar = "procedure",
-#'  eq5d_version = "3L",
-#'  country = "UK"
+#'  name_groupvar = "procedure"
 #' )
 #' tmp$p
 #' tmp$plot_data
 
 eq5d_utility_change_by_group_plot <- function(df,
-                       names_eq5d = NULL,
+                       name_utility = NULL,
                        name_fu = NULL,
                        levels_fu = NULL,
-                       name_groupvar = NULL,
-                       eq5d_version = NULL,
-                       country) {
+                       name_groupvar = NULL) {
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(df = df, names_eq5d = names_eq5d, 
-                     name_fu = name_fu, levels_fu = levels_fu,
-                     eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
+  temp <- .get_names(df = df, name_utility = name_utility,
+                     name_fu = name_fu, levels_fu = levels_fu)
+  name_utility <- temp$name_utility
   name_fu <- temp$name_fu
   levels_fu <- temp$levels_fu
-  eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d, name_fu, name_groupvar)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_utility, name_fu, name_groupvar)
+  .check_columns(df, name_utility = name_utility,
+                 name_fu = name_fu,
+                 name_groupvar = name_groupvar)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
@@ -2548,10 +2856,8 @@ eq5d_utility_change_by_group_plot <- function(df,
     names(df)[names(df) == name_groupvar] <- "groupvar"
     df$groupvar <- factor(df$groupvar)
   }
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("fu", "groupvar", "utility"), drop = FALSE]
   
   ### analysis ###
@@ -2582,44 +2888,38 @@ eq5d_utility_change_by_group_plot <- function(df,
 
 #' eq5d_utility_distribution_plot: EQ-5D values: smoothed lines and confidence intervals by groupvar
 #' 
-#' @param df Data frame with the EQ-5D columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
+#' @param df Data frame with the EQ-5D value column
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @return Summary plot and data used for plotting
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' tmp <- eq5d_utility_distribution_plot(
 #'  example_data,
-#'  names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-#'  eq5d_version = "3L",
-#'  country = "UK"
+#'  name_utility = "value"
 #' )
 #' tmp$p
 #' tmp$plot_data
 
 eq5d_utility_distribution_plot <- function(df, 
-                       names_eq5d = NULL,
-                       eq5d_version = NULL,
-                       country) {
+                       name_utility = NULL) {
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
-  eq5d_version <- temp$eq5d_version
+  temp <- .get_names(df = df, name_utility = name_utility)
+  name_utility <- temp$name_utility
   # check existence of columns 
-  names_all <- c(names_eq5d)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_utility)
+  .check_columns(df, name_utility = name_utility)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, "utility", drop = FALSE]
 
   ### analysis ###
@@ -2648,49 +2948,43 @@ eq5d_utility_distribution_plot <- function(df,
 
 #' eq5d_utility_vas_scatter_plot: EQ-5D values: smoothed lines and confidence intervals by groupvar
 #' 
-#' @param df Data frame with the EQ-5D columns
-#' @param names_eq5d Character vector of column names for the EQ-5D dimensions
+#' @param df Data frame with the EQ-5D value and EQ VAS columns
+#' @param name_utility Character string naming the column of pre-calculated
+#'   EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+#'   used. The values are analysed as they stand; see
+#'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_vas Character string for the VAS column
-#' @param eq5d_version Version of the EQ-5D instrument
-#' @param country A character string representing the name of the country. 
-#' This could be in a 2-letter format, full name or short name, as specified in the country_codes datasets.
 #' @return Summary plot and data used for plotting
 #' @export
 #' @examples
+#' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+#'                              country = "GB")
 #' tmp <- eq5d_utility_vas_scatter_plot(
 #'    example_data,
-#'    names_eq5d = c("mo", "sc", "ua", "pd", "ad"),
-#'    name_vas = "vas",
-#'    eq5d_version = "3L",
-#'    country = "UK"
+#'    name_utility = "value",
+#'    name_vas = "vas"
 #'  )
 #' tmp$p
 #' tmp$plot_data
 
 eq5d_utility_vas_scatter_plot <- function(df,
-                        names_eq5d = NULL,
-                        name_vas = NULL,
-                        eq5d_version = NULL,
-                        country) {
+                        name_utility = NULL,
+                        name_vas = NULL) {
   
   ### data preparation ###
   
   # replace NULL names with defaults
-  temp <- .get_names(names_eq5d = names_eq5d, name_vas = name_vas, eq5d_version = eq5d_version)
-  names_eq5d <- temp$names_eq5d
+  temp <- .get_names(df = df, name_utility = name_utility, name_vas = name_vas)
+  name_utility <- temp$name_utility
   name_vas <- temp$name_vas
-  eq5d_version <- temp$eq5d_version
   # check existence of columns 
-  names_all <- c(names_eq5d, name_vas)
-  if (!all(names_all %in% colnames(df)))
-    stop("Provided column names not in dataframe. Stopping.")
+  names_all <- c(name_utility, name_vas)
+  .check_columns(df, name_utility = name_utility, name_vas = name_vas)
   # all columns defined and exist; only leave relevant columns now
   df <- df[, names_all, drop = FALSE]
   # further checks and data preparation
   df <- .prep_vas(df = df, name = name_vas)
-  df <- .prep_eq5d(df = df, names = names_eq5d,
-                   add_state = TRUE,
-                   add_utility = TRUE, eq5d_version = eq5d_version, country = country)
+  df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("vas", "utility"), drop = FALSE]
 
   ### analysis ###

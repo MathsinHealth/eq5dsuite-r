@@ -3,7 +3,7 @@
 \name{.check_uniqueness}
 \alias{.check_uniqueness}
 \title{Check the uniqueness of groups
-This function takes a data frame `df` and a vector of columns `group_by`, and checks whether the combinations of values in the columns specified by `group_by` are unique. If the combinations are not unique, a warning message is printed.}
+This function takes a data frame `df` and a vector of columns `group_by`, and checks whether the combinations of values in the columns specified by `group_by` are unique. If they are not, it emits a message; it does not stop, and the caller carries on with the duplicated rows.}
 \usage{
 .check_uniqueness(df, group_by)
 }
@@ -13,15 +13,10 @@ This function takes a data frame `df` and a vector of columns `group_by`, and ch
 \item{group_by}{A character vector of column names in `df` that specify the groups to check for uniqueness.}
 }
 \value{
-No return value, called for side effects: it will stop with an error if any group combinations are not unique.
+No return value. Called for its side effect: a \code{message()} naming the grouping columns when their combinations are not unique. It never raises a condition and never stops.
 }
 \description{
 Check the uniqueness of groups
-This function takes a data frame `df` and a vector of columns `group_by`, and checks whether the combinations of values in the columns specified by `group_by` are unique. If the combinations are not unique, a warning message is printed.
+This function takes a data frame `df` and a vector of columns `group_by`, and checks whether the combinations of values in the columns specified by `group_by` are unique. If they are not, it emits a message; it does not stop, and the caller carries on with the duplicated rows.
 }
-\examples{
-df <- data.frame(id = c(1, 1, 1, 1, 2, 2),
-                 fu = rep(c("baseline", "follow-up"), 3),
-                 value = rnorm(6))
-.check_uniqueness(df, c("id", "fu"))
-}
+\keyword{internal}

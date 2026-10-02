@@ -4,7 +4,7 @@
 \alias{eq5d_profile_better_dimensions_by_group_plot}
 \title{eq5d_profile_better_dimensions_by_group_plot: Percentage of Respondents Who Improved in Each EQ-5D Dimension, by Group
 This function calculates how many respondents improved in each dimension between
-two time points and summarizes the results for each group. The, it prodcuces 
+two time points and summarizes the results for each group. It then produces
 a dimension-focused chart illustrating improvement percentages by dimension.}
 \usage{
 eq5d_profile_better_dimensions_by_group_plot(
@@ -37,7 +37,7 @@ A list containing:
 \description{
 eq5d_profile_better_dimensions_by_group_plot: Percentage of Respondents Who Improved in Each EQ-5D Dimension, by Group
 This function calculates how many respondents improved in each dimension between
-two time points and summarizes the results for each group. The, it prodcuces 
+two time points and summarizes the results for each group. It then produces
 a dimension-focused chart illustrating improvement percentages by dimension.
 }
 \examples{

@@ -4,32 +4,45 @@
 
 mod_export_ui <- function(id) {
   ns <- shiny::NS(id)
-  shiny::tagList(
-    bslib::layout_columns(
-      col_widths = c(8, 4),
-      
-      # Main: export list
+  page_shell(
+    sidebar_title = "Export",
+    sidebar = shiny::tagList(
+      hint("Every saved result, in the order set on the Results page."),
+      shiny::downloadButton(ns("download_docx"), "Word report (.docx)",
+                            class = "btn-primary w-100 mb-2"),
+      shiny::downloadButton(ns("download_all_zip"), "Tables and figures (.zip)",
+                            class = "btn-outline-secondary w-100 mb-2"),
+      shiny::downloadButton(ns("download_script"), "R script (.R)",
+                            class = "btn-outline-secondary w-100"),
+      disclosure(
+        "About the R script",
+        shiny::p("An R script that repeats this session: loading the data, ",
+                 "the checks, the EQ-5D values, and every saved result in the ",
+                 "order below."),
+        shiny::p("It calls eq5dsuite's analysis functions and writes ",
+                 "everything else out in full, so it runs on its own ",
+                 "wherever the package is installed, and you can read and ",
+                 "change every step.")),
+      disclosure(
+        "About the Word report",
+        shiny::p("One section per result, in order, each with its title and ",
+                 "its table or figure."),
+        shiny::p("The document uses the template bundled with the package, ",
+                 "so it carries the same styles, header and footer as other ",
+                 "Maths in Health reports."))
+    ),
+    shiny::tagList(
       bslib::card(
-        bslib::card_header("Export Results"),
-        bslib::card_body(
-          shiny::uiOutput(ns("export_list"))
-        )
+        fill = FALSE,
+        bslib::card_header("Results"),
+        bslib::card_body(fillable = FALSE, shiny::uiOutput(ns("export_list")))
       ),
-      
-      # Sidebar: bulk export
       bslib::card(
-        bslib::card_header("Bulk Export"),
-        bslib::card_body(
-          shiny::p("Download all tables (CSV) and figures (PNG) as a ZIP file."),
-          shiny::downloadButton(ns("download_all_zip"),
-                                "All results (.zip)",
-                                class = "btn-outline-primary w-100 mb-2"),
-          shiny::hr()
-          # shiny::p("Export all results to a Word document."),
-          # shiny::downloadButton(ns("download_word"),
-          #                       "Word report (.docx)",
-          #                       class = "btn-outline-primary w-100 mb-2")
-        )
+        fill = FALSE,
+        bslib::card_header("R script"),
+        bslib::card_body(fillable = FALSE,
+          hint("What the download contains."),
+          shiny::verbatimTextOutput(ns("script_preview")))
       )
     )
   )
@@ -45,8 +58,7 @@ mod_export_server <- function(id, rv) {
     output$export_list <- shiny::renderUI({
       results <- rv$results
       if (length(results) == 0L) {
-        return(shiny::p("No results to export. Run analyses first.",
-                        class = "text-muted small"))
+        return(hint("Nothing to export yet. Run an analysis first."))
       }
       
       rows <- lapply(seq_along(results), function(i) {
@@ -79,12 +91,13 @@ mod_export_server <- function(id, rv) {
         }
         
         shiny::div(
-          class = "d-flex align-items-center justify-content-between border-bottom py-2",
+          class = "export-row",
           shiny::div(
+            shiny::span(class = "result-n", i), " ",
             shiny::strong(r$label),
             shiny::tags$br(),
             shiny::tags$small(
-              class = "text-muted",
+              class = "hint",
               format(r$timestamp, "%d %b %Y %H:%M"),
               " \u2014 ", r$result_type
             )
@@ -156,6 +169,37 @@ mod_export_server <- function(id, rv) {
       })
     })
     
+    # ── R script ──────────────────────────────────────────────────────────────
+    script_lines <- shiny::reactive({
+      eq5dsuite:::script_from_session(rv$steps %||% list(), rv$results)
+    })
+
+    output$script_preview <- shiny::renderText(
+      paste(script_lines(), collapse = "\n"))
+
+    output$download_script <- shiny::downloadHandler(
+      filename = function() {
+        paste0("eq5d_analysis_", format(Sys.Date(), "%Y%m%d"), ".R")
+      },
+      content = function(file) writeLines(script_lines(), file)
+    )
+
+    # ── Word report ───────────────────────────────────────────────────────────
+    output$download_docx <- shiny::downloadHandler(
+      filename = function() {
+        paste0("eq5dsuite_results_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".docx")
+      },
+      content = function(file) {
+        results <- rv$results
+        if (length(results) == 0L)
+          stop("There are no saved results to put in the report.", call. = FALSE)
+        # The same formatting the Analysis page shows on screen, so the
+        # document and the app do not disagree about what a number means.
+        write_results_docx(results, file,
+                           format_table = eq5dsuite:::eq5d_format_table)
+      }
+    )
+
     # ── Bulk ZIP download (tables + plots) ────────────────────────────────────
     output$download_all_zip <- shiny::downloadHandler(
       filename = function() {
@@ -163,9 +207,13 @@ mod_export_server <- function(id, rv) {
       },
       content = function(file) {
         results  <- rv$results
-        tmp_dir  <- file.path(tempdir(), paste0("eq5dzip_", format(Sys.time(), "%H%M%S%OS3")))
+        # A name no other session can collide with, removed once the archive
+        # is built rather than left in tempdir() for the life of the process.
+        # Inside this session's own folder, which goes when the session does.
+        tmp_dir  <- session_file(session, "eq5dzip_", "")
         dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
-        
+        on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
+
         out_files <- character(0L)
         
         # Tables → CSV

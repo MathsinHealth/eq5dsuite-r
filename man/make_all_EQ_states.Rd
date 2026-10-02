@@ -11,7 +11,7 @@ make_all_EQ_states(
 )
 }
 \arguments{
-\item{version}{Either "3L" or "5L", to signify whether 243 or 3125 states should be generated}
+\item{version}{Either "3L" or "5L", to signify whether 243 or 3125 states should be generated. Matching is case-insensitive.}
 
 \item{dim.names}{A vector of dimension names to be used as names for output columns.}
 

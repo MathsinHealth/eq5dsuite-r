@@ -14,17 +14,24 @@ eq5d(
 \arguments{
 \item{x}{A vector of 5-digit EQ-5D-3L state indexes or a matrix/data.frame with columns corresponding to EQ-5D state dimensions}
 
-\item{country}{String vector indicating country names or  ISO3166 Alpha 2 / 3 country codes.}
+\item{country}{A country code or value set code identifying the value set
+to use, as listed by \code{eqvs_display()}. Matching is case-insensitive.
+For countries with more than one value set (for example Germany, with
+\code{"DE_TTO"} and \code{"DE_VAS"}), the value set code must be
+given; supplying the country code alone raises an error listing the
+available codes.}
 
-\item{version}{String indicating which version to use. Options are '5L'  (default), '3L', 'xw', 'xwr', and 'Y3L'.}
+\item{version}{String indicating which version to use. Options are '5L'  (default), '3L', 'xw', 'xwr', and 'Y3L'. Matching is case-insensitive.}
 
 \item{dim.names}{A vector of dimension names to identify dimension columns.}
 }
 \value{
-A vector of values or data.frame with one column for each value set requested.
+A numeric vector of values, or a data.frame with one column for
+  each value set requested. The result is an unnamed numeric vector, one element per
+  element or row of \code{x} and in the same order.
 }
 \description{
-Get EQ-5D index values for the -3L, -5L, crosswalk (-3L value set applied to -5L health states),  reverse crosswealk (-5L value set applied to -3L health states), and -Y-3L
+Get EQ-5D values for the -3L, -5L, crosswalk (-3L value set applied to -5L health states), reverse crosswalk (-5L value set applied to -3L health states), and -Y-3L
 }
 \examples{
 # US -3L value set

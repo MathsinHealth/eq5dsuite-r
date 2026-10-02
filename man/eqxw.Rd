@@ -9,12 +9,19 @@ eqxw(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"))
 \arguments{
 \item{x}{A vector of 5-digit EQ-5D-5L state indexes or a matrix/data.frame with columns corresponding to EQ-5D state dimensions}
 
-\item{country}{String vector indicating country names or  ISO3166 Alpha 2 / 3 country codes.}
+\item{country}{A country code or value set code identifying the value set
+to use, as listed by \code{eqvs_display()}. Matching is case-insensitive.
+For countries with more than one value set (for example Germany, with
+\code{"DE_TTO"} and \code{"DE_VAS"}), the value set code must be
+given; supplying the country code alone raises an error listing the
+available codes.}
 
 \item{dim.names}{A vector of dimension names to identify dimension columns}
 }
 \value{
-A vector of reverse crosswalk values or data.frame with one column per reverse crosswalk set requested.
+A numeric vector of crosswalk values, or a data.frame with one
+  column per crosswalk set requested. The result is an unnamed numeric vector, one element per
+  element or row of \code{x} and in the same order.
 }
 \description{
 Get crosswalk values

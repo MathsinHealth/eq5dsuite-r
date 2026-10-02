@@ -1,3 +1,36 @@
+
+# eq5dsuite 2.1.0
+
+### Analysis and reporting
+
+- **Breaking change:** EQ-5D value analyses now use a pre-calculated column specified by `name_utility`, rather than selecting a value set. This also applies to LSS, LFS and Health Profile Grid analyses that use values. The Health Profile Grid now ranks observed states and no longer takes `eq5d_version`.
+- Added `eq5d_profile_shannon()` for Shannon's index and evenness. 
+- EQ-5D value functions now return unnamed numeric vectors in input order. 
+
+### Value sets and mappings
+
+- Added the Nigerian EQ-5D-5L value set (`NG`) and `eqxwr_UK()` for mapping 3L responses to 2026 UK 5L values. 
+- Renamed UK value set codes to `GB`, retaining `UK` as a deprecated alias.
+- Removed interactive value set selection and improved custom value set validation and caching. 
+- `eqvs_display(return_df = TRUE)` now returns without printing.
+
+### Shiny app
+
+- **Bug fix:** the value set selector offered the data's own instrument's value sets for every method. A crosswalk values one instrument's responses with the *other* instrument's value set, so with EQ-5D-3L data the reverse crosswalk listed 41 EQ-5D-3L sets where it should have listed the 45 EQ-5D-5L ones -- and 22 of those 41 were refused by `eq5d()`. About half the value sets are published for both instruments, which is why the list looked right. The selector now follows the method's target instrument and names it, and a selection the new method cannot use is cleared rather than carried over.
+- Redesigned the app around the workflow. Integrated UK mapping into value calculation.
+- Added utility-column selection, timepoint ordering and Shannon's indices. 
+- Added result reordering and removal, Word reports using the supplied template, and reproducible R script exports.
+
+### Deployment and maintenance
+
+- Added online deployment support, with configurable upload limits, session cleanup and privacy notices, and `inst/shiny/DEPLOY.md` as a guide to deploying on Shiny Server.
+- Added internal helpers for reading, preparing, validating and formatting data, and for age bands. These support the app and are not part of the package's interface: `eq5dsuite::` lists the analysis functions and the value set tools, and nothing else. The app reaches the helpers through `eq5dsuite:::`, and `app.R` on a server is `eq5dsuite:::eq5d_app(online = TRUE)`.
+- The R script the app generates calls only the analysis functions, and writes reading, column renaming, the validation checks, the age-band midpoints and the display formatting out in full, so every step can be read and changed. A test runs the generated script and compares its value columns, results and formatted tables against the app's.
+- Expanded tests and documentation.
+-  Removed `providercode` from `example_data`.
+
+---
+
 # eq5dsuite 2.0.0 (Breaking change release)
 
 ## API rename — all 31 analysis functions have new descriptive names

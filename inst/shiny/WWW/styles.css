@@ -1,279 +1,300 @@
-/* =============================================================================
-   eq5dsuite Shiny App — Company theme
-   Maths in Health visual identity
-   ============================================================================= */
+/* styles.css — spacing, type scale and the sidebar/card rhythm.
+   One border weight, one radius, one muted grey. Nothing here sets a fixed
+   height: cards size to their content and only the page scrolls.
 
-/* ── Navbar ──────────────────────────────────────────────────────────────── */
+   The palette is the house style: a warm off-white ground rather than a cool
+   grey one, terracotta for the things you act on, steel blue for the bars that
+   head a card, and a serif for headings. The values are sampled from the
+   reference app, not guessed. */
+
+:root {
+  --ink:        #3A3330;   /* warm near-black, for headings and body */
+  --muted:      #8B7E74;   /* warm grey, for secondary text */
+  --line:       #E4DED5;   /* warm rule */
+  --ground:     #FAF8F5;   /* page */
+  --surface:    #FFFFFF;   /* cards sit above the ground */
+  --bar:        #F5F0EA;   /* navbar and other furniture */
+  --primary:    #A87968;   /* terracotta: active tab, primary buttons */
+  --primary-dk: #8E6354;   /* its hover */
+  --header:     #7A9BB5;   /* steel blue: the bar at the top of a card */
+  --link:       #934D30;   /* rust */
+  --radius:     8px;
+  --pad:        1.15rem;
+  --gap:        1.5rem;
+  --serif:      Georgia, "Iowan Old Style", "Palatino Linotype",
+                "Book Antiqua", "Times New Roman", serif;
+}
+
+body { background: var(--ground); color: var(--ink); }
+
+h1, h2, h3, h4, h5, h6, .card-header, .home-title, .home-h2 {
+  font-family: var(--serif);
+}
+
+a { color: var(--link); }
+a:hover { color: var(--primary-dk); }
+
+/* ── Navbar ─────────────────────────────────────────────────────────────── */
+/* A light bar with the brand at the left, and the page you are on marked by a
+   terracotta pill rather than an underline. */
 
 .navbar {
-  background-color: #142036 !important;
-  border-bottom: 2px solid #142036;
-  padding-top: 0.35rem;
-  padding-bottom: 0.35rem;
+  background: var(--bar) !important;
+  border-bottom: 1px solid var(--line);
 }
-
-.navbar-brand {
-  color: #ffffff !important;
-  font-weight: 700;
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-/* Nav links */
-.navbar-nav .nav-link {
-  color: rgba(255, 255, 255, 0.82) !important;
-  padding: 0.3rem 0.75rem;
-  border-radius: 4px;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.navbar-nav .nav-link:hover {
-  color: #ffffff !important;
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-.navbar-nav .nav-link.active {
-  color: #ffffff !important;
-  background-color: #4f6f9f !important;
-  border-radius: 4px;
-}
-
-/* Right-side nav items (package link etc.) */
-.navbar-nav.ms-auto .nav-item a,
-.navbar-nav.ms-auto .nav-item small {
-  color: rgba(255, 255, 255, 0.6) !important;
-  font-size: 0.78rem;
-}
-
-/* ── MiH brand text logo ─────────────────────────────────────────────────── */
-
-.mih-brand-logo {
+.brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: .5rem;
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  letter-spacing: .01em;
+  color: var(--ink) !important;
 }
+.brand img { display: block; }
 
-.mih-brand-logo .mih-badge {
-  background-color: #142036;
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.1rem 0.38rem;
-  border-radius: 3px;
-  letter-spacing: 0.03em;
+.navbar .nav-link {
+  color: var(--muted) !important;
+  border-radius: var(--radius);
+  padding: .35rem .8rem;
+  margin-right: .15rem;
 }
-
-.mih-brand-logo .mih-label {
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 0.78rem;
-  font-weight: 400;
-  letter-spacing: 0.01em;
+.navbar .nav-link:hover { color: var(--ink) !important; }
+.navbar .nav-link.active {
+  background: var(--primary);
+  color: #fff !important;
 }
+.nav-ext { font-size: .8rem; color: var(--muted) !important; opacity: .8; }
 
-/* ── Page body / main content area ──────────────────────────────────────── */
-
-body {
-  background-color: #f5f6f8;
-  padding-bottom: 42px; /* room for fixed footer */
-}
-
-.tab-content {
-  background-color: #f5f6f8;
-  min-height: calc(100vh - 100px);
-  padding: 1.1rem 1.25rem 1rem;
-}
-
-/* ── Cards ───────────────────────────────────────────────────────────────── */
+/* ── Cards ──────────────────────────────────────────────────────────────── */
 
 .card {
-  border: 1px solid #dde3ec;
-  border-radius: 6px;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.06);
-  background-color: #ffffff;
-  margin-bottom: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: none;
+  margin-bottom: var(--gap);
+  background: var(--surface);
 }
-
+/* A card is titled by a coloured bar, as in the house style. */
 .card-header {
-  background-color: #5fa3c7;
-  color: #ffffff;
+  background: var(--header);
+  color: #fff;
+  border-bottom: 0;
   font-weight: 600;
-  font-size: 0.875rem;
-  padding: 0.45rem 0.85rem;
-  border-bottom: none;
-  border-radius: 5px 5px 0 0;
+  font-size: 1rem;
+  letter-spacing: .01em;
+  padding: .6rem var(--pad);
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+}
+.card-header .hint, .card-header small { color: rgba(255, 255, 255, .8); }
+.card-body { padding: var(--pad); background: var(--surface); }
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+
+.bslib-sidebar-layout > .sidebar {
+  background: var(--bar);
+  border-right: 1px solid var(--line);
+}
+.sidebar .form-group, .sidebar .shiny-input-container { margin-bottom: .8rem; }
+.sidebar-label {
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+  margin: 1rem 0 .4rem;
+}
+.sidebar hr { margin: 1rem 0; border-color: var(--line); }
+/* Analysis labels are long; let them wrap clear of the dropdown arrow. */
+.sidebar select.form-select {
+  font-size: .875rem;
+  white-space: normal;
+  padding-right: 2rem;
+  height: auto;
 }
 
-.card-body {
-  padding: 0.85rem 0.9rem;
+/* ── Type ───────────────────────────────────────────────────────────────── */
+
+.hint { font-size: .85rem; color: var(--muted); margin-bottom: .6rem; }
+.num  { text-align: right; font-variant-numeric: tabular-nums; }
+.big-number {
+  font-size: 2.2rem;
+  font-weight: 600;
+  margin: .6rem 0 .2rem;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Green header variant for secondary sections */
-.card-header-green,
-.card > .card-header.green {
-  background-color: #5c8f6f !important;
+/* ── Notes ──────────────────────────────────────────────────────────────── */
+
+.note {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  padding: .6rem .8rem;
+  margin-bottom: 1rem;
+  font-size: .88rem;
 }
+.note { background: var(--surface); }
+.note-info    { border-left-color: var(--header); }
+.note-ok      { border-left-color: #6E8B6B; }
+.note-warning { border-left-color: #C08A3E; }
+.note-error   { border-left-color: #A6503F; }
 
-/* Muted / neutral header for utility/download cards */
-.card-header-muted {
-  background-color: #6c757d !important;
+/* ── Disclosures ────────────────────────────────────────────────────────── */
+
+.disclosure { margin: .6rem 0; }
+.disclosure > summary {
+  cursor: pointer;
+  font-size: .85rem;
+  color: var(--muted);
 }
-
-/* ── Buttons ─────────────────────────────────────────────────────────────── */
-
-.btn-primary {
-  background-color: #4f6f9f;
-  border-color: #4f6f9f;
+.disclosure-body {
+  padding: .6rem 0 0;
+  font-size: .85rem;
 }
-.btn-primary:hover {
-  background-color: #3d5880;
-  border-color: #3d5880;
-}
+.disclosure-body p { margin-bottom: .5rem; }
 
-.btn-success {
-  background-color: #5c8f6f;
-  border-color: #5c8f6f;
-}
-.btn-success:hover {
-  background-color: #4a7459;
-  border-color: #4a7459;
-}
+/* ── Rows of controls and buttons ───────────────────────────────────────── */
 
-/* ── Alerts ──────────────────────────────────────────────────────────────── */
-
-.alert {
-  border-radius: 5px;
-  font-size: 0.85rem;
-}
-
-/* ── Typography ──────────────────────────────────────────────────────────── */
-
-h4, h5 {
-  color: #1f2a44;
-  font-weight: 700;
-}
-
-h6, .fw-semibold {
-  color: #344055;
-}
-
-.text-muted {
-  color: #6b7280 !important;
-}
-
-/* ── Workflow steps (Home page) ──────────────────────────────────────────── */
-
-.workflow-steps {
+.control-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.6rem 0;
+  gap: 1rem;
+  align-items: flex-end;
 }
+.control-row > .shiny-input-container { flex: 1 1 10rem; margin-bottom: 0; }
+.btn-row { display: flex; flex-wrap: wrap; gap: .5rem; }
 
-.workflow-step {
+/* ── Saved results ──────────────────────────────────────────────────────── */
+/* A numbered, reorderable list; the number is the export position. */
+
+.result-row {
   display: flex;
   align-items: flex-start;
-  gap: 0.55rem;
-  background: #f0f4fa;
-  border: 1px solid #dce3ef;
-  border-radius: 6px;
-  padding: 0.5rem 0.7rem;
-  flex: 1 1 calc(50% - 0.5rem);
-  min-width: 160px;
+  gap: .5rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.result-row:last-of-type { border-bottom: 0; }
+.result-row-main { flex: 1 1 auto; min-width: 0; font-size: .88rem; }
+.result-row-main a { display: block; }
+.result-row-controls {
+  display: flex;
+  gap: .2rem;
+  flex: 0 0 auto;
+}
+.result-row-controls .btn { padding: .1rem .35rem; line-height: 1.2; }
+.result-row-selected { background: #F0E9E2; }
+.result-n {
+  display: inline-block;
+  min-width: 1.4em;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 
-.workflow-step-num {
-  background-color: #4f6f9f;
-  color: #fff;
-  font-size: 0.7rem;
+.export-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.export-row:last-child { border-bottom: 0; }
+
+/* ── Small tables used for summaries ────────────────────────────────────── */
+
+.home-needs { width: 100%; font-size: .9rem; }
+.home-needs td { padding: .35rem .6rem .35rem 0; vertical-align: top; }
+.home-needs tr + tr td { border-top: 1px solid var(--line); }
+
+.map-summary { font-size: .85rem; margin: 0; }
+.map-summary dt { font-weight: 400; color: var(--muted); float: left; clear: left; width: 45%; }
+.map-summary dd { margin-left: 45%; margin-bottom: .2rem; }
+
+/* ── Home ───────────────────────────────────────────────────────────────── */
+
+.home {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 3rem;
+}
+.home-title {
+  font-family: var(--serif);
+  font-size: 2.4rem;
   font-weight: 700;
-  min-width: 1.3rem;
-  height: 1.3rem;
-  border-radius: 50%;
+  margin-bottom: .2rem;
+}
+.home-sub   { font-size: 1.15rem; color: var(--muted); margin-bottom: 1.8rem; }
+.home-lede  { font-size: 1rem; line-height: 1.6; margin-bottom: 2.2rem; }
+.home-h2    { font-size: 1.15rem; font-weight: 600; margin: 2rem 0 .8rem; }
+.home-start {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 0.05rem;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin: 2.2rem 0 1rem;
+}
+.home-start-example { flex: 1 1 18rem; }
+.home-start-example .hint { margin-top: .5rem; }
+.home-foot { font-size: .8rem; color: var(--muted); }
+
+/* ── Figures ────────────────────────────────────────────────────────────── */
+/* Sized by aspect ratio, so a figure fills its card at any width and grows
+   when the card is opened full screen. */
+
+.plot-frame { width: 100%; aspect-ratio: 16 / 9; min-height: 320px; }
+.bslib-full-screen-enter ~ * .plot-frame,
+.card[data-full-screen="true"] .plot-frame { aspect-ratio: auto; height: 100%; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+/* Only tables may scroll sideways, and only inside their own container. */
+
+.dataTables_wrapper { font-size: .88rem; }
+table.dataTable thead th { border-bottom: 1px solid var(--line); }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.btn-primary:hover, .btn-primary:focus {
+  background: var(--primary-dk);
+  border-color: var(--primary-dk);
+}
+.btn-outline-secondary {
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--surface);
+}
+.btn-outline-secondary:hover {
+  background: var(--bar);
+  color: var(--ink);
+  border-color: var(--muted);
+}
+.btn:focus, .btn:focus-visible {
+  box-shadow: 0 0 0 .2rem rgba(168, 121, 104, .3);
 }
 
-.workflow-step-body strong {
-  display: block;
-  font-size: 0.83rem;
-  color: #1f2a44;
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+/* Striping in the warm family rather than the default blue-grey. */
+
+table.dataTable tbody tr.odd > * { background: #FBF9F6; }
+table.dataTable thead th {
+  font-family: var(--serif);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
 }
 
-.workflow-step-body span {
-  font-size: 0.78rem;
-  color: #6b7280;
-}
+/* ── Form controls ──────────────────────────────────────────────────────── */
 
-/* Quick start bullets */
-.qs-item {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  font-size: 0.83rem;
-  color: #344055;
-  margin-bottom: 0.3rem;
-}
-
-.qs-dot {
-  color: #5fa3c7;
-  font-size: 0.7rem;
-  flex-shrink: 0;
-}
-
-/* ── Utility status message ──────────────────────────────────────────────── */
-
-.utility-status-banner {
-  background: #fff8e1;
-  border: 1px solid #ffe082;
-  border-radius: 5px;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.83rem;
-  color: #6d4c00;
-  margin-bottom: 0.75rem;
-}
-
-/* ── DT tables ───────────────────────────────────────────────────────────── */
-
-.dataTables_wrapper .dataTables_info,
-.dataTables_wrapper .dataTables_paginate {
-  font-size: 0.8rem;
-}
-
-/* ── Global footer ───────────────────────────────────────────────────────── */
-
-.mih-footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: #142036;
-  color: rgba(255, 255, 255, 0.55);
-  text-align: center;
-  padding: 5px 16px;
-  font-size: 0.72rem;
-  z-index: 1040;
-  border-top: 1px solid #142036;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-}
-
-.mih-footer a {
-  color: rgba(255, 255, 255, 0.70);
-  text-decoration: none;
-}
-
-.mih-footer a:hover {
-  color: #ffffff;
-  text-decoration: underline;
-}
-
-.mih-footer .mih-footer-sep {
-  opacity: 0.3;
+.form-control:focus, .form-select:focus, .selectize-input.focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 .2rem rgba(168, 121, 104, .2);
 }

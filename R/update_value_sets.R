@@ -4,15 +4,9 @@
   "MathsInHealth/eq5dsuite-value-sets/main/"
 )
 
-# Map instrument version to folder name
-.vs_folder <- function(version) {
-  switch(version,
-    "3L"  = "EQ-5D-3L",
-    "5L"  = "EQ-5D-5L",
-    "Y3L" = "EQ-5D-Y-3L",
-    stop("Unknown version: ", version)
-  )
-}
+# Map instrument version to folder name. The folders are named after the
+# instrument, so this is the instrument name; see .eq5d_instrument().
+.vs_folder <- function(version) .eq5d_instrument(version)
 
 #' Fetch the index of available value sets from GitHub
 #'
@@ -173,15 +167,21 @@ drop_value_set <- function(vs_code, version, ask = TRUE) {
   }
 
   tryCatch({
-    suppressMessages(
+    # ask = FALSE: confirmation, if any, has already been obtained above.
+    removed <- suppressMessages(
       eqvs_drop(
         country    = vs_code,
         version    = version,
-        saveOption = 2
+        saveOption = 2,
+        ask        = FALSE
       )
     )
-    message("\u2705 ", vs_code, " removed successfully.")
-    TRUE
+    if (isTRUE(removed)) {
+      message("\u2705 ", vs_code, " removed successfully.")
+    } else {
+      message("\u274c ", vs_code, " could not be removed.")
+    }
+    isTRUE(removed)
   },
   error = function(e) {
     message("\u274c Could not remove ", vs_code,
@@ -414,6 +414,16 @@ update_value_sets <- function(versions = c("3L", "5L", "Y3L"),
                               ask      = TRUE,
                               drop     = NULL,
                               rename   = NULL) {
+
+  # Value sets live in an environment shared by the whole R process, and the
+  # cache they are written to is shared by every session on the server. An app
+  # on a public server must not change either, so this refuses there. See
+  # DEPLOY.md.
+  if (.online_now())
+    stop("update_value_sets() is disabled while the app is running online. ",
+         "Value sets are shared by every session on the server, so they are ",
+         "updated by whoever maintains the deployment, not from the app.",
+         call. = FALSE)
 
   dropped  <- character(0)
   renamed  <- character(0)

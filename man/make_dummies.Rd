@@ -19,7 +19,7 @@ make_dummies(
 \arguments{
 \item{df}{data.frame containing EQ-5D health states.}
 
-\item{version}{Either "3L" or "5L", to signify EQ-5D instrument version}
+\item{version}{EQ-5D instrument version: "3L", "5L" or "Y3L". Matching is case-insensitive.}
 
 \item{dim.names}{A vector of dimension names to be used as names for output columns.}
 
@@ -39,7 +39,7 @@ make_dummies(
 A data.frame of dummy variables
 }
 \description{
-Make a data.frame of all EQ-5D dummies relevant for e.g. regression modeling.
+Make a data.frame of all EQ-5D dummies relevant for e.g. regression modelling.
 }
 \examples{
 make_dummies(make_all_EQ_states('3L'), '3L')

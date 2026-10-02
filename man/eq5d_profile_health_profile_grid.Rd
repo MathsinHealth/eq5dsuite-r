@@ -7,27 +7,27 @@
 eq5d_profile_health_profile_grid(
   df,
   names_eq5d,
+  name_utility = NULL,
   name_fu,
   levels_fu = NULL,
-  name_id,
-  eq5d_version,
-  country
+  name_id
 )
 }
 \arguments{
-\item{df}{A data frame containing EQ-5D columns, a grouping variable, an ID column, and a follow-up column}
+\item{df}{A data frame containing EQ-5D columns, a value column, an ID column, and a follow-up column}
 
 \item{names_eq5d}{A character vector of EQ-5D dimension names}
+
+\item{name_utility}{Character string naming the column of pre-calculated
+EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
+used. The values are used to rank the observed health states; see
+\code{\link{eq5d}} for calculating them from the dimensions.}
 
 \item{name_fu}{A character string for the follow-up column}
 
 \item{levels_fu}{A character vector of length 2, specifying the order of the follow-up levels (e.g., c("Pre-op","Post-op"))}
 
 \item{name_id}{A character string for the patient ID column}
-
-\item{eq5d_version}{Version of the EQ-5D instrument}
-
-\item{country}{A character string representing the name of the country.}
 }
 \value{
 A list with components:
@@ -40,14 +40,30 @@ individual's change in health states (ranked from best to worst) between two tim
 points. A diagonal reference line indicates no change; points above the line reflect
 improvement, and points below indicate deterioration.
 }
+\details{
+The ranking is over the health states that occur in \code{df}, ordered by
+the values in \code{name_utility}: the best observed state is rank 1 and
+the worst is rank \emph{n}, where \emph{n} is the number of distinct
+states observed. Earlier versions of this function valued every state the
+instrument allows and ranked over all of them -- 243 for the EQ-5D-3L,
+3,125 for the 5L -- which needed a value set rather than a column of
+values. The order of the plotted points is the same either way; the rank
+numbers and the axis limits are not.
+
+Where one state carries more than one value -- which happens when the
+values depend on something besides the state, as in the NICE DSU mapping,
+where they depend on age and sex -- the state is ranked by its mean value,
+with a warning.
+}
 \examples{
+example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
+                             country = "GB")
 tmp <- eq5d_profile_health_profile_grid(
            df = example_data, 
            names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
+           name_utility = "value",
            name_fu = "time", 
            levels_fu = c("Pre-op", "Post-op"), 
-           name_id = "id", 
-           eq5d_version = "3L", 
-           country = "UK"
+           name_id = "id"
        )
 }

@@ -131,7 +131,7 @@ toEQ5Ddims <- function(x, dim.names = c("mo", "sc", "ua", "pd", "ad")) {
 
 #' @title make_all_EQ_states
 #' @description Make a data.frame with all health states defined by dimensions
-#' @param version Either "3L" or "5L", to signify whether 243 or 3125 states should be generated
+#' @param version Either "3L" or "5L", to signify whether 243 or 3125 states should be generated. Matching is case-insensitive.
 #' @param dim.names A vector of dimension names to be used as names for output columns.
 #' @param append_index Boolean to indicate whether a column of 5-digit EQ-5D health state indexes should be added to output.
 #' @return A data.frame with 5 columns and 243 (-3L) or 3125 (-5L) health states
@@ -145,7 +145,9 @@ make_all_EQ_states <- function(version = "5L", dim.names = c("mo", "sc", "ua", "
       message("version argument provided length of more than 1, first element is used.")
       version <- version[[1]]
     }
-  if(!toupper(version) %in% c("5L", "3L")) stop('version argument should be either "3L" or "5L"')
+  # The version was validated with toupper() but the branch below compared the
+  # raw string, so make_all_EQ_states("5l") returned the 243 three-level states.
+  version <- .norm_version(version, allowed = c("3L", "5L"))
   xout <- do.call(expand.grid, structure(rep(list(1:ifelse(version == "5L", 5, 3)), 5),.Names = dim.names[5:1]))[,5:1]
   if(append_index) xout$state <- toEQ5Dindex(xout, dim.names)
   xout
@@ -153,7 +155,7 @@ make_all_EQ_states <- function(version = "5L", dim.names = c("mo", "sc", "ua", "
 
 #' @title make_all_EQ_indexes
 #' @description Make a vector containing all 5-digit EQ-5D indexes for -3L or -5L version.
-#' @param version Either "3L" or "5L", to signify whether 243 or 3125 states should be generated
+#' @param version Either "3L" or "5L", to signify whether 243 or 3125 states should be generated. Matching is case-insensitive.
 #' @param dim.names A vector of dimension names to be used as names for output columns.
 #' @return A vector with 5-digit state indexes for all 243 (-3L) or 3125 (-5L) EQ-5D health states
 #' @examples 
@@ -167,9 +169,9 @@ make_all_EQ_indexes <- function(version = "5L", dim.names = c("mo", "sc", "ua", 
 }
 
 #' @title EQ_dummies
-#' @description Make a data.frame of all EQ-5D dummies relevant for e.g. regression modeling. 
+#' @description Make a data.frame of all EQ-5D dummies relevant for e.g. regression modelling. 
 #' @param df data.frame containing EQ-5D health states.
-#' @param version Either "3L" or "5L", to signify EQ-5D instrument version
+#' @param version EQ-5D instrument version: "3L", "5L" or "Y3L". Matching is case-insensitive.
 #' @param dim.names A vector of dimension names to be used as names for output columns.
 #' @param drop_level_1 If set to FALSE, dummies for level 1 will be included. Defaults to TRUE.
 #' @param add_intercept If set to TRUE, a column containing 1s will be appended. Defaults to FALSE.
@@ -201,6 +203,11 @@ make_dummies <- function(df,
     stop("Argument dim.names not of length 5.")
   if (!length(dim(df) == 2)) 
     stop("Need to provide matrix or data.frame of 2 dimensions.")
+  # The version was not checked at all, and the branch below compares against
+  # "5L", so any other spelling -- including "5l" -- built three-level dummies.
+  # On five-level data that indexed past the end of the design matrix and
+  # returned rows of NA.
+  version <- .norm_version(version)
   
   # Case-insensitive column matching without renaming
   col_lower    <- tolower(colnames(df))
@@ -239,14 +246,18 @@ make_dummies <- function(df,
   startlevel <- ifelse(drop_level_1, 2, 1)
   
   if (incremental) {
-    tmp <- 1 * lower.tri(diag(vers), TRUE)[, startlevel:vers]
+    tmp <- 1 * lower.tri(diag(vers), TRUE)[, startlevel:vers, drop = FALSE]
   } else {
-    tmp <- diag(vers)[, startlevel:vers]
+    tmp <- diag(vers)[, startlevel:vers, drop = FALSE]
   }
   
-  # Use actual column names via col_map
+  # Use actual column names via col_map. drop = FALSE matters: with a single
+  # row of input, tmp[i, ] returned the row as a plain vector, cbind() then
+  # laid the five dimensions out as five columns instead of one row of
+  # dummies, and naming those columns failed with "length of 'dimnames' [2]
+  # not equal to array extent".
   tmpout <- do.call(cbind, lapply(col_map, function(col) {
-    tmp[df[[col]], ]
+    tmp[df[[col]], , drop = FALSE]
   }))
   
   colnames(tmpout) <- as.vector(
@@ -264,18 +275,32 @@ make_dummies <- function(df,
 
 #' @title eqvs_add
 #' @description Add user-defined EQ-5D value set and corresponding crosswalk option.
-#' @param df A data.frame or file name pointing to csv file. The contents of the data.frame or csv file should be exactly two columns: state, containing a list of all 3125 (for 5L) or 243 (for 3L) EQ-5D health state vectors, and a column of corresponding utility values, with a suitable name.
-#' @param version Version of the EQ-5D instrument. Can take values 5L (default) or 3L.
+#' @param df A data.frame or file name pointing to csv file. The contents of the data.frame or csv file should be exactly two columns: state, containing a list of all 3125 (for 5L) or 243 (for 3L and Y3L) EQ-5D health state vectors, and a column of corresponding utility values, with a suitable name. The EQ-5D-Y-3L uses the same 243 health states as the EQ-5D-3L.
+#' @param version Version of the EQ-5D instrument. Can take values 5L (default), 3L or Y3L. Matching is case-insensitive.
 #' @param country Optional string. If not NULL, will be used as a country description for the user-defined value set.
 #' @param countryCode Optional string. If not NULL, will be used as the two-digit code for the value set. Must be different from any existing national value set code.
-#' @param VSCode Optional string. If not NULL, will be used as the three-digit code for the value set. Must be different from any existing national value set code.
+#' @param VSCode Optional string. If not NULL, will be used as the code for the
+#'   value set; otherwise the name of the second column of \code{df} is used.
+#'   It must differ from every built-in value set code, compared without regard
+#'   to case and across all three instruments, and from the codes of your own
+#'   value sets for this instrument. \code{eqvs_display()} lists the codes
+#'   already in use.
 #' @param description Optional string. If not NULL, will be used as a descriptive text for the user-defined value set. 
-#' @param saveOption Integer indicating how the cache data should be saved. 1: Do not save (default), 2: Save in package folder, 3: Save in another path.
+#' @param saveOption Integer indicating how the cache data should be saved.
+#'   1: Do not save (default).
+#'   2: Save in this package's user cache directory, as returned by
+#'   \code{tools::R_user_dir("eq5dsuite", "cache")}. It is read back
+#'   automatically when the package is next loaded. Nothing is written inside
+#'   the installed package, which CRAN does not permit.
+#'   3: Save in the directory given by \code{savePath}, to be read back with
+#'   \code{eqvs_load()}.
 #' @param savePath A path where the cache data should be saved when `saveOption` is 3. Please use `eqvs_load` to load it in your next session.
 #' @return True/False, indicating success or error.
-#' @examples 
-#' # make nonsense value set
-#' new_df <- data.frame(state = make_all_EQ_indexes(), TEST = runif(3125))
+#' @examples
+#' # Make a nonsense value set. The values are a plain sequence rather than
+#' # runif(), which would move the random seed of whoever runs the example.
+#' new_df <- data.frame(state = make_all_EQ_indexes(),
+#'                      TEST = seq(1, -0.5, length.out = 3125))
 #' # Add as value set for Fantasia
 #' eqvs_add(
 #'    new_df,
@@ -286,6 +311,8 @@ make_dummies <- function(df,
 #'    saveOption = 1
 #' )
 #' eq5d5l(55555,country = "FAN")
+#' # Remove it again, so the example leaves no value set behind.
+#' eqvs_drop(country = "FAN", version = "5L", saveOption = 1, ask = FALSE)
 #' @importFrom utils read.csv
 #' @export
 
@@ -296,6 +323,9 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
   }
   
   pkgenv <- getOption("eq.env")
+  # The version is pasted into the package environment keys below, and decides
+  # how many rows the value set must have, so it has to be canonical first.
+  version <- .norm_version(version)
   if(inherits(df, 'character')) {
     if(!file.exists(df)) stop('File named ', df, ' does not appear to exist. Exiting.')
     df <- utils::read.csv(file = df, stringsAsFactors = F)
@@ -305,8 +335,11 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
   
   # read off version-dependent parameters
   j <- if (version == "5L") 5 else 3
-  states_str <- paste0("states_", version)
-  eq5d_str <- paste0("EQ-5D-", version)
+  # Not paste0("states_", version): that produced "states_Y3L", a key nothing
+  # creates, so the health-state check below rejected every EQ-5D-Y-3L value
+  # set. The Y3L states are the 3L states; see .states_key().
+  states_str <- .states_key(version)
+  eq5d_str <- .eq5d_instrument(version)
   uservsets_str <- paste0("uservsets", version)
   user_defined_str <- paste0("user_defined_", version)
   
@@ -330,6 +363,33 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
     }
   }
   thisName <- ifelse(is.null(VSCode), colnames(df)[2], VSCode)
+
+  # Reject a code that a built-in value set already uses. .fixPkgEnv() combines
+  # the built-in and user-defined tables with merge(), which treats a column
+  # name they share as an extra join key: the combined table collapses to the
+  # rows where the two sets happen to hold identical values -- none, in
+  # practice -- and every lookup for that instrument fails. A code differing
+  # only in case is just as damaging, because .fixCountries() matches
+  # case-insensitively and then reports the two sets as ambiguous.
+  #
+  # All instruments are checked, not just this one: reusing a code that is
+  # built in elsewhere is confusing, and a set can be added for one instrument
+  # later.
+  builtin <- .builtin_vs_codes()
+  clash <- builtin[toupper(builtin) == toupper(thisName)]
+  if (length(clash)) {
+    used_for <- .builtin_vs_versions(clash[1])
+    stop("Value set code '", thisName, "' is already used by the built-in ",
+         "value set '", clash[1], "'",
+         if (length(used_for))
+           paste0(" (", paste(used_for, collapse = ", "), ")") else "",
+         ".\n  Built-in codes cannot be reused, even in a different case or ",
+         "for a different instrument.\n  Please choose a different code and ",
+         "pass it as `VSCode`. eqvs_display(version = \"", version,
+         "\") lists the codes already in use.",
+         call. = FALSE)
+  }
+
   if(thisName %in% colnames(pkgenv[[uservsets_str]])) {
     warning(paste0("New country name already in user-defined ", eq5d_str, " value set list."))
     return(0)
@@ -342,15 +402,23 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
   tmp[, thisName] <- df[, 2]
   assign(x = uservsets_str, value = tmp, envir = pkgenv)
   
-  tmp <- data.frame(Version = version,
-                    Name = ifelse(is.null(country), NA, country), 
-                    Name_short = ifelse(is.null(country), NA, country), 
-                    Country_code = ifelse(is.null(countryCode), colnames(df)[2], countryCode), 
-                    VS_code = ifelse(is.null(VSCode), colnames(df)[2], VSCode),
-                    doi = ifelse(is.null(description), NA, description))
-  
-  if(user_defined_str %in% names(pkgenv)) tmp <- rbind(pkgenv[[user_defined_str]], tmp)
-  
+  # Build the metadata row from the shared schema (derived from the built-in
+  # country_codes table) so that user-defined and built-in value set tables
+  # always have the same columns, in the same order, with the same types.
+  # Columns with no value for a user-defined set are left as typed NA.
+  tmp <- .new_vs_meta_row(
+    Version      = version,
+    Name         = country,
+    Name_short   = country,
+    Country_code = if (is.null(countryCode)) colnames(df)[2] else countryCode,
+    VS_code      = if (is.null(VSCode)) colnames(df)[2] else VSCode,
+    doi          = description
+  )
+
+  if(user_defined_str %in% names(pkgenv))
+    tmp <- rbind(.migrate_vs_meta(pkgenv[[user_defined_str]]), tmp)
+
+  rownames(tmp) <- NULL
   assign(x = user_defined_str, value = tmp, envir = pkgenv)
   
   # Handle save options
@@ -375,9 +443,9 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
     .fixPkgEnv(saveCache = FALSE)
   }
   if (saveOption == 2 || saveOption == 3) {
-    filePath <- file.path(path, 'cache.Rdta.')
-    .fixPkgEnv(saveCache = TRUE, filePath = filePath)
-    message(paste0('Cache data saved to ', file.path(path, 'cache.Rdta.')))
+    filePath <- file.path(path, .cache_basename)
+    if (.fixPkgEnv(saveCache = TRUE, filePath = filePath))
+      message(paste0('Cache data saved to ', filePath))
   }
 
   message(paste("The value set", country, "was added."))
@@ -385,19 +453,56 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
 
 #' @title eqvs_load
 #' @description Load cache data from a specified path.
+#' @details
+#' \code{loadPath} is the *directory* a cache was written to with
+#' \code{eqvs_add(saveOption = 3, savePath = ...)} or
+#' \code{eqvs_drop(saveOption = 3, savePath = ...)}, not a single value set.
+#' Everything saved there is restored at once.
+#'
+#' A cache written with \code{saveOption = 2} goes to the package's user cache
+#' directory and is read back automatically when the package loads, so it needs
+#' no call to \code{eqvs_load()}.
 #' @param loadPath The path from which to load the cache data.
 #' @return TRUE if loading is successful, FALSE otherwise.
+#' @seealso \code{\link{eqvs_add}}, \code{\link{eqvs_drop}}
+#' @examples
+#' # Save a custom value set to a directory of your choosing, then read it
+#' # back. tempdir() is used here so the example leaves nothing behind.
+#' path <- file.path(tempdir(), "eq5d-value-sets")
+#' dir.create(path, showWarnings = FALSE)
+#'
+#' my_vs <- data.frame(state = make_all_EQ_indexes("3L"),
+#'                     MY_VS = round(seq(1, -0.5, length.out = 243), 4))
+#' eqvs_add(my_vs, version = "3L", country = "My Country",
+#'          countryCode = "MC", VSCode = "MY_VS",
+#'          saveOption = 3, savePath = path)
+#'
+#' # In a later session, restore it from that directory.
+#' eqvs_load(loadPath = path)
+#' eq5d3l(c(11111, 33333), country = "MY_VS")
+#'
+#' # Tidy up.
+#' eqvs_drop(country = "MY_VS", version = "3L", ask = FALSE)
+#' unlink(path, recursive = TRUE)
 #' @export
 eqvs_load <- function(loadPath) {
   pkgenv <- getOption("eq.env")
   if (is.null(loadPath) || !nzchar(loadPath)) {
     stop("A valid 'loadPath' is required.")
   }
-  cacheFile <- file.path(loadPath, 'cache.Rdta')
-  if (!file.exists(cacheFile)) {
+  # Accepts a cache written by any supported schema version, including the
+  # legacy 'cache.Rdta.' basename. See R/cache_schema.R.
+  cacheFile <- .find_cache_file(loadPath)
+  if (is.null(cacheFile)) {
     stop("Cache file not found at specified 'loadPath'.")
   }
-  load(cacheFile, envir = pkgenv)
+  status <- .apply_cache(pkgenv, loadPath)
+  if (identical(status, "reject")) {
+    return(FALSE)
+  }
+  # Rebuild the combined and crosswalk value set tables so the newly loaded
+  # user-defined sets are usable straight away.
+  .fixPkgEnv(saveCache = FALSE)
   message(paste0('Cache data loaded from ', cacheFile, '.'))
   return(TRUE)
 }
@@ -405,15 +510,33 @@ eqvs_load <- function(loadPath) {
 
 #' @title eqvs_drop
 #' @description Drop user-defined EQ-5D value set to reverse crosswalk options.
-#' @param version Version of the EQ-5D instrument. Can take values 5L (default) or 3L.
-#' @param country Optional string. If NULL, a list of current user-defined value sets will be provided for selection. If set, and matching an existing user-defined value set, a prompt will be given as to whether the value set should be deleted. 
-#' @param saveOption Integer indicating how the cache data should be saved. 1: Do not save (default), 2: Save in package folder, 3: Save in another path.
+#' @param version Version of the EQ-5D instrument. Can take values 5L (default), 3L or Y3L. Matching is case-insensitive.
+#' @param country A country code or value set code identifying the user-defined
+#'   value set to remove, as listed by \code{eqvs_display()}. If more than one
+#'   user-defined value set shares the country code, the value set code must be
+#'   given; otherwise the function stops and lists the matching codes.
+#' @param saveOption Integer indicating how the cache data should be saved.
+#'   1: Do not save (default).
+#'   2: Save in this package's user cache directory, as returned by
+#'   \code{tools::R_user_dir("eq5dsuite", "cache")}. It is read back
+#'   automatically when the package is next loaded. Nothing is written inside
+#'   the installed package, which CRAN does not permit.
+#'   3: Save in the directory given by \code{savePath}, to be read back with
+#'   \code{eqvs_load()}.
 #' @param savePath A path where the cache data should be saved when `saveOption` is 3. Please use `eqvs_load` to load it in your next session.
-#' @return True/False, indicating success or error.
-#' @examples 
+#' @param ask Logical. Whether to ask for confirmation before removing the
+#'   value set. Confirmation is only requested when \code{ask} is \code{TRUE}
+#'   \emph{and} the session is interactive; with \code{ask = FALSE}, or in a
+#'   non-interactive session, the value set is removed without prompting.
+#'   Defaults to \code{TRUE}.
+#' @return Invisibly \code{TRUE} if a value set was removed, and \code{FALSE}
+#'   otherwise (for example if no matching value set exists, or the user
+#'   declined the confirmation).
+#' @examples
 #' \donttest{
-#'   # make nonsense value set
-#'   new_df <- data.frame(state = make_all_EQ_indexes(), TEST = runif(3125))
+#'   # Make a nonsense value set, without moving the random seed.
+#'   new_df <- data.frame(state = make_all_EQ_indexes(),
+#'                        TEST = seq(1, -0.5, length.out = 3125))
 #'   # Add as value set for Fantasia
 #'   eqvs_add(
 #'    new_df,
@@ -425,11 +548,11 @@ eqvs_load <- function(loadPath) {
 #'   )
 #'   # Test the new value set
 #'   eq5d5l(55555,country = "FAN")
-#'   # Drop value set for Fantasia
-#'   eqvs_drop(country = 'FAN', saveOption = 1)
+#'   # Drop value set for Fantasia, without asking for confirmation
+#'   eqvs_drop(country = 'FAN', saveOption = 1, ask = FALSE)
 #' }
 #' @export
-eqvs_drop <- function(country = NULL, version = "5L", saveOption = 1, savePath = NULL) {
+eqvs_drop <- function(country = NULL, version = "5L", saveOption = 1, savePath = NULL, ask = TRUE) {
   
   # Ensure saveOption is valid
   if (!saveOption %in% c(1, 2, 3)) {
@@ -437,55 +560,60 @@ eqvs_drop <- function(country = NULL, version = "5L", saveOption = 1, savePath =
   }
   
   pkgenv <- getOption("eq.env")
-  version <- toupper(version)
+  version <- .norm_version(version)
   
   user_defined_str <- paste0("user_defined_", version)
   uservsets_str <- paste0("uservsets", version)
   
   if (!user_defined_str %in% names(pkgenv)) {
     message(paste0("No user-defined value sets exist for ", version, ". Exiting."))
-    return(FALSE)
+    return(invisible(FALSE))
   }
-  
+
   udc <- pkgenv[[user_defined_str]]
-  
+
   # Ensure `udc` exists and is not empty
   if (is.null(udc) || nrow(udc) == 0) {
     message("No user-defined value sets found. Exiting.")
-    return(FALSE)
+    return(invisible(FALSE))
   }
-  
-  # Handle case where multiple value sets exist for the same country
-  matched_rows <- which(toupper(udc$Country_code) == toupper(country) | toupper(udc$VS_code) == toupper(country))
-  
+
+  # Handle case where multiple value sets exist for the same country.
+  # An exact value set code always wins over a country code match, mirroring
+  # .fixCountries().
+  exact_vs <- which(toupper(udc$VS_code) == toupper(country))
+  matched_rows <- if (length(exact_vs) == 1L) exact_vs else
+    which(toupper(udc$Country_code) == toupper(country) | toupper(udc$VS_code) == toupper(country))
+
   if (length(matched_rows) == 0) {
     message("No matching user-defined value set found for country: ", country, ". Exiting.")
-    return(FALSE)
+    return(invisible(FALSE))
   }
-  
+
   if (length(matched_rows) > 1) {
-    message(paste0("There are ", length(matched_rows), " value sets available for country code '", country, "'."))
-    options_table <- udc[matched_rows, c("Version", "Name", "Country_code", "VS_code", "doi")]
-    print(options_table)
-    
-    # Ask user which value set to delete
-    repeat {
-      user_input <- readline(prompt = "Please enter the VS_code you want to delete: ")
-      if (user_input %in% udc$VS_code[matched_rows]) {
-        country <- user_input
-        break
-      } else {
-        message("Invalid VS_code. Please enter one from the table above.")
-      }
-    }
-  } else {
-    country <- udc$VS_code[matched_rows]  # If only one match, proceed
+    # This used to prompt with readline() in a repeat loop, which never
+    # terminates in a non-interactive session. Fail with an actionable error
+    # instead, in every kind of session. Mirrors .fixCountries().
+    stop("Multiple value sets are available for country code '", country,
+         "': ", paste(udc$VS_code[matched_rows], collapse = ", "),
+         ". Please specify one of these value set codes. See ",
+         "eqvs_display(version = \"", version, "\") for the full list.",
+         call. = FALSE)
   }
-  
-  # Ask for confirmation
-  yesno <- readline(prompt = paste0('Are you sure you want to delete value set "', country, '" for ', version, '? ([Y]es/[N]o) : '))
-  if (tolower(yesno) %in% c("yes", "y")) {
-    
+
+  country <- udc$VS_code[matched_rows]
+
+  # Ask for confirmation, but only where a user can actually answer. With
+  # ask = FALSE, or in a non-interactive session, proceed without prompting --
+  # the same pattern as drop_value_set() and update_value_sets().
+  confirmed <- TRUE
+  if (ask && interactive()) {
+    yesno <- readline(prompt = paste0('Are you sure you want to delete value set "', country, '" for ', version, '? ([Y]es/[N]o) : '))
+    confirmed <- tolower(trimws(yesno)) %in% c("yes", "y")
+  }
+
+  if (confirmed) {
+
     message('Removing ', country, ' from user-defined value sets.')
     
     # Remove from user-defined dataset
@@ -524,14 +652,16 @@ eqvs_drop <- function(country = NULL, version = "5L", saveOption = 1, savePath =
     }
     
     if (saveOption == 2 || saveOption == 3) {
-      filePath <- file.path(path, 'cache.Rdta.')
-      .fixPkgEnv(saveCache = TRUE, filePath = filePath)
-      message(paste0('Cache data saved to ', filePath))
+      filePath <- file.path(path, .cache_basename)
+      if (.fixPkgEnv(saveCache = TRUE, filePath = filePath))
+        message(paste0('Cache data saved to ', filePath))
     }
     message(paste("The value set", country, "was deleted."))
-  } else {
-    message("OK. Exiting without deletion.")
+    return(invisible(TRUE))
   }
+
+  message("OK. Exiting without deletion.")
+  invisible(FALSE)
 }
 
 
@@ -540,18 +670,27 @@ eqvs_drop <- function(country = NULL, version = "5L", saveOption = 1, savePath =
 #'   (reverse) crosswalks. Built-in value sets are shown first, followed
 #'   by any user-defined value sets added via \code{eqvs_add()}.
 #' @param version Version of the EQ-5D instrument. One of \code{"3L"},
-#'   \code{"5L"} (default), or \code{"Y3L"}.
-#' @param return_df Logical. If \code{TRUE}, returns a data.frame with
-#'   all columns (including \code{citation} if present). Defaults to
-#'   \code{FALSE}.
+#'   \code{"5L"} (default), or \code{"Y3L"}. Matching is case-insensitive.
+#' @param return_df Logical. If \code{FALSE} (default), the summary table is
+#'   printed to the console. If \code{TRUE}, nothing is printed and the value
+#'   set information is returned as a data.frame instead, with all columns
+#'   (including \code{citation} if present), so that it can be used in further
+#'   code without cluttering scripts, reports or the console.
 #' @param show_citation Logical. If \code{TRUE}, prints the full AMA
 #'   citation for each value set after the summary table. Defaults to
-#'   \code{FALSE}.
-#' @return \code{NULL} invisibly (default), or a data.frame when
-#'   \code{return_df = TRUE}.
+#'   \code{FALSE}. Applies only when \code{return_df = FALSE}: the returned
+#'   data.frame always includes the \code{citation} column, so this argument
+#'   is ignored when \code{return_df = TRUE}.
+#' @return When \code{return_df = FALSE}, \code{NULL} invisibly, called for the
+#'   printed output. When \code{return_df = TRUE}, a data.frame, returned
+#'   visibly so that it still prints when the call is made at the console.
 #' @examples
-#' # Display available EQ-5D-5L value sets.
+#' # Print the available EQ-5D-5L value sets.
 #' eqvs_display(version = "5L")
+#'
+#' # Get the same information as a data.frame, printing nothing.
+#' vs <- eqvs_display(version = "5L", return_df = TRUE)
+#' head(vs)
 #' @export
 eqvs_display <- function(version       = "5L",
                           return_df     = FALSE,
@@ -579,12 +718,30 @@ eqvs_display <- function(version       = "5L",
     rbind(df1, df2)
   }
 
-  pkgenv          <- getOption("eq.env")
-  version         <- toupper(version)
+  pkgenv <- getOption("eq.env")
+
+  # Without this check an unknown version silently yields a NULL table, which
+  # printed as a bare "NULL" and, with return_df = TRUE, returned a 1x1 matrix
+  # holding nothing.
+  version <- .norm_version(version)
+
   user_defined_str <- paste0("user_defined_", version)
 
   builtin <- pkgenv$country_codes[[version]]
   ud      <- pkgenv[[user_defined_str]]
+
+  # --- Data frame form: return without printing anything ---------------------
+  # Returned visibly, so an interactive call still shows the table through R's
+  # normal printing, while `vs <- eqvs_display(...)` stays silent.
+  if (return_df) {
+    if (NROW(ud) > 0) {
+      return(align_df_cols(
+        cbind(Type = "Value set",    builtin),
+        cbind(Type = "User-defined", ud)
+      ))
+    }
+    return(cbind(Type = "Value set", builtin))
+  }
 
   # --- Print built-in sets ---
   message("Available national value sets for ", version, " version:")
@@ -612,30 +769,24 @@ eqvs_display <- function(version       = "5L",
     }
   }
 
-  # --- Return data frame if requested ---
-  if (return_df) {
-    if (NROW(ud) > 0) {
-      combined <- align_df_cols(
-        cbind(Type = "Value set",    builtin),
-        cbind(Type = "User-defined", ud)
-      )
-    } else {
-      combined <- cbind(Type = "Value set", builtin)
-    }
-    return(combined)
-  }
-
   invisible(NULL)
 }
 
 
 #' @title eq5d
-#' @description Get EQ-5D index values for the -3L, -5L, crosswalk (-3L value set applied to -5L health states),  reverse crosswealk (-5L value set applied to -3L health states), and -Y-3L
+#' @description Get EQ-5D values for the -3L, -5L, crosswalk (-3L value set applied to -5L health states), reverse crosswalk (-5L value set applied to -3L health states), and -Y-3L
 #' @param x A vector of 5-digit EQ-5D-3L state indexes or a matrix/data.frame with columns corresponding to EQ-5D state dimensions
-#' @param version String indicating which version to use. Options are '5L'  (default), '3L', 'xw', 'xwr', and 'Y3L'.
-#' @param country String vector indicating country names or  ISO3166 Alpha 2 / 3 country codes.
+#' @param version String indicating which version to use. Options are '5L'  (default), '3L', 'xw', 'xwr', and 'Y3L'. Matching is case-insensitive.
+#' @param country A country code or value set code identifying the value set
+#'   to use, as listed by \code{eqvs_display()}. Matching is case-insensitive.
+#'   For countries with more than one value set (for example Germany, with
+#'   \code{"DE_TTO"} and \code{"DE_VAS"}), the value set code must be
+#'   given; supplying the country code alone raises an error listing the
+#'   available codes.
 #' @param dim.names A vector of dimension names to identify dimension columns.
-#' @return A vector of values or data.frame with one column for each value set requested.
+#' @return A numeric vector of values, or a data.frame with one column for
+#'   each value set requested. The result is an unnamed numeric vector, one element per
+#'   element or row of \code{x} and in the same order.
 #' @examples 
 #' # US -3L value set
 #' eq5d(c(11111, 12321, 32123, 33333), 'US', '3L') 
@@ -710,10 +861,14 @@ eq5d <- function(x, country = NULL, version = '5L', dim.names = c("mo", "sc", "u
                  'XWR' = pkgenv$states_3L,
                  'Y3L' = pkgenv$states_3L)
   
-  # Compute EQ-5D index values
-  xout <- rep(NA, length(x))
+  # Compute EQ-5D values
+  xout <- rep(NA_real_, length(x))
   xout[!is.na(x)] <- vset[match(x[!is.na(x)], svec$state), country]
-  names(xout) <- xorig
+  # Deliberately unnamed. This used to attach the input state codes as names,
+  # which then travelled into every data.frame column, plot label and
+  # comparison built on the result, and made identical() fail against a plain
+  # numeric vector. Nothing in the package looked the names up. Callers who
+  # want them can use setNames().
   xout
 }
 
@@ -723,12 +878,17 @@ eq5d <- function(x, country = NULL, version = '5L', dim.names = c("mo", "sc", "u
 #' dimensions of the EQ-5D-3L.
 #' @param x A vector of 5-digit EQ-5D-3L state indexes, or a matrix/data.frame
 #'   with columns corresponding to the EQ-5D-3L dimensions.
-#' @param country String vector indicating country names or ISO3166 Alpha 2 / 3
-#'   country codes.
+#' @param country A country code or value set code identifying the value set
+#'   to use, as listed by \code{eqvs_display()}. Matching is case-insensitive.
+#'   For countries with more than one value set (for example Germany, with
+#'   \code{"DE_TTO"} and \code{"DE_VAS"}), the value set code must be
+#'   given; supplying the country code alone raises an error listing the
+#'   available codes.
 #' @param dim.names A character vector specifying the names of the EQ-5D-3L
 #'   dimensions. Default is `c("mo", "sc", "ua", "pd", "ad")`.
 #' @return A numeric vector of EQ-5D-3L values, or a data.frame with one column
-#'   for each requested value set.
+#'   for each requested value set. The result is an unnamed numeric vector, one element per
+#'   element or row of \code{x} and in the same order.
 #' @examples
 #' # Example 1: utility values from EQ-5D-3L profile codes
 #' eq5d3l(c(11111, 12321, 32123, 33333), country = "US")
@@ -774,13 +934,18 @@ eq5d3l <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"
 #'
 #' @param x A vector of 5-digit EQ-5D-5L state indexes, or a matrix/data.frame
 #'   with columns corresponding to the EQ-5D-5L dimensions.
-#' @param country String vector indicating country names or ISO3166 Alpha 2 / 3
-#'   country codes.
+#' @param country A country code or value set code identifying the value set
+#'   to use, as listed by \code{eqvs_display()}. Matching is case-insensitive.
+#'   For countries with more than one value set (for example Germany, with
+#'   \code{"DE_TTO"} and \code{"DE_VAS"}), the value set code must be
+#'   given; supplying the country code alone raises an error listing the
+#'   available codes.
 #' @param dim.names A character vector specifying the names of the EQ-5D-5L
 #'   dimensions. Default is `c("mo", "sc", "ua", "pd", "ad")`.
 #'
 #' @return A numeric vector of EQ-5D-5L values, or a data.frame with one column
-#'   for each requested value set.
+#'   for each requested value set. The result is an unnamed numeric vector, one element per
+#'   element or row of \code{x} and in the same order.
 #'
 #' @examples
 #' # Example 1: utility values from EQ-5D-5L profile codes
@@ -827,12 +992,17 @@ eq5d5l <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"
 #' dimensions of the EQ-5D-Y-3L.
 #' @param x A vector of 5-digit EQ-5D-Y-3L state indexes, or a matrix/data.frame
 #'   with columns corresponding to the EQ-5D-Y-3L dimensions.
-#' @param country String vector indicating country names or ISO3166 Alpha 2 / 3
-#'   country codes.
+#' @param country A country code or value set code identifying the value set
+#'   to use, as listed by \code{eqvs_display()}. Matching is case-insensitive.
+#'   For countries with more than one value set (for example Germany, with
+#'   \code{"DE_TTO"} and \code{"DE_VAS"}), the value set code must be
+#'   given; supplying the country code alone raises an error listing the
+#'   available codes.
 #' @param dim.names A character vector specifying the names of the EQ-5D-Y-3L
 #'   dimensions. Default is `c("mo", "sc", "ua", "pd", "ad")`.
 #' @return A numeric vector of EQ-5D-Y-3L values, or a data.frame with one
-#'   column for each requested value set.
+#'   column for each requested value set. The result is an unnamed numeric vector, one element per
+#'   element or row of \code{x} and in the same order.
 #' @examples
 #' # Example 1: utility values from EQ-5D-Y-3L profile codes
 #' eq5dy3l(x = c(11111, 12321, 33333), country = "SI")

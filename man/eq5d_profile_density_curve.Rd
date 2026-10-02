@@ -16,7 +16,9 @@ eq5d_profile_density_curve(df, names_eq5d, eq5d_version)
 \value{
 A list containing:
   \item{plot_data}{A data frame with the cumulative distribution of profiles}
-  \item{p}{A ggplot2 object showing the Health State Density Index}
+  \item{hsdi}{The Health State Density Index, unrounded. The plot subtitle
+    shows it rounded to three decimal places.}
+  \item{p}{A ggplot2 object showing the Health State Density Curve}
 }
 \description{
 This function calculates and plots the Health State Density Curve (HSDC) for a given
@@ -27,6 +29,19 @@ indicates a perfectly even distribution. The function also calculates the Health
 Density Index (HSDI), representing how sharply the observed distribution deviates from
 the diagonal.
 }
+\details{
+The HSDI is twice the area between the curve and the diagonal, so 0 is a
+perfectly even distribution across the observed profiles and 1 the most
+concentrated.
+
+Note what the index is relative to. \code{CumPropStates} is
+\code{seq_len(n) / n}, where \code{n} is the number of health state
+profiles **observed in these data**, not the 243 (EQ-5D-3L, EQ-5D-Y-3L) or
+3125 (EQ-5D-5L) profiles the instrument allows. The index therefore
+describes how unevenly the observations are spread over the profiles that
+appear, and is not comparable between datasets in which different numbers of
+profiles appear.
+}
 \examples{
 figure <- eq5d_profile_density_curve(
             df = example_data, 
@@ -34,5 +49,6 @@ figure <- eq5d_profile_density_curve(
             eq5d_version = "3L"
           )
 figure$plot_data
+figure$hsdi
 figure$p
 }

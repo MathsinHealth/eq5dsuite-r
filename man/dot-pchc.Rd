@@ -14,7 +14,8 @@ identifying the respondent. The change score is a lag over the rows of
 together and in follow-up order. Rows that start a new respondent are
 given a missing change score, so a respondent whose first record is not
 the first follow-up is excluded rather than compared against the
-preceding respondent.}
+preceding respondent. So are rows with no \code{id} and rows whose
+\code{fu} is missing.}
 
 \item{level_fu_1}{Value of the first (i.e. earliest) follow-up. Would normally be defined as levels_fu[1].}
 

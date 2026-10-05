@@ -22,7 +22,7 @@ COMPONENTS <- c("EQ-5D profiles" = "profile",
                                 levels_fu = .fu_lv(rv))
 
 # needs codes: fu, id, groupvar, vas, utility
-# opts codes:  utility_col, topn, two_fu, group_filter
+# opts codes:  utility_col, country, topn, two_fu, group_filter
 #
 # No analysis takes a value set any more: every one that uses EQ-5D values
 # takes them from a column, which the Calculate EQ-5D values page produces.
@@ -146,12 +146,16 @@ ANALYSES <- list(
     "Figure 1.2.5 — Health Profile Grid (HPG)",
     "Scatter plot comparing health profiles between two timepoints.",
     "plot", "eq5d_profile_health_profile_grid", "HPG scatter (fig. 1.2.5)",
-    needs = c("utility", "fu", "id"), opts = c("utility_col", "two_fu"),
+    # The one analysis that takes a value set rather than a value column: it
+    # ranks every state the instrument allows, including those absent from
+    # the data, which needs them valued. See ?eq5d_profile_health_profile_grid.
+    needs = c("fu", "id"), opts = c("country", "two_fu"),
     prep = function(input, rv) list(
       df = rv$processed_data,
-      args = list(names_eq5d = DIMS_STD, name_utility = input$utility_col,
+      args = list(names_eq5d = DIMS_STD,
                   name_fu = "fu", levels_fu = input$fu_levels,
-                  name_id = "id"))),
+                  name_id = "id", eq5d_version = .ver(rv),
+                  country = input$country))),
 
   # ── EQ-5D profiles: summarising severity ──────────────────────────────────
   a("131", "profile", "Summarising severity",
@@ -202,7 +206,7 @@ ANALYSES <- list(
     paste("Shannon's index H' in bits, its maximum H'max, and Shannon's",
           "evenness index J' = H'/H'max, for each dimension and for the",
           "health state: how much of the classification system the sample",
-          "uses. By timepoint when one is mapped."),
+          "uses. By timepoint when one is selected."),
     "table", "eq5d_profile_shannon", "Shannon's indices (1.4.1)",
     prep = function(input, rv) list(
       df = rv$processed_data,
@@ -305,12 +309,15 @@ ANALYSES <- list(
     needs = "vas", opts = "group_filter",
     prep = function(input, rv) {
       df <- rv$processed_data
-      sel <- input$group_filter
-      if (!is.null(sel) && sel != "All" && "groupvar" %in% names(df)) {
-        df <- df[df[["groupvar"]] == sel, , drop = FALSE]
-      }
+      sel <- group_filter_label(input$group_filter)
+      # The restriction is part of the result's record, so the generated
+      # script analyses the same rows. It is applied by evaluating the very
+      # code the script writes out.
+      filter <- if (!is.null(sel) && "groupvar" %in% names(df))
+        list(column = "groupvar", value = sel)
+      df <- eq5dsuite:::.apply_filter(df, filter)
       fu <- ensure_fu(df, rv$mapping)
-      list(df = fu$df,
+      list(df = fu$df, filter = filter,
            prep = if (identical(fu$name_fu, "fu")) NULL else "fu_all",
            args = list(name_vas = "vas", name_fu = fu$name_fu,
                        levels_fu = if (identical(fu$name_fu, "fu")) .fu_lv(rv)),
@@ -382,6 +389,268 @@ unmet_needs <- function(spec, rv) {
   out
 }
 
+# ── Catalogue of available analyses ───────────────────────────────────────────
+#
+# A plain-language guide to the registry above, keyed by its ids: a title
+# with every abbreviation spelt out, and what each analysis produces and when
+# it is useful. Which analyses are offered is decided from the registry's
+# `needs` and from the data themselves; see analysis_prerequisites().
+CATALOGUE <- list(
+  "111" = list(
+    title = "Level frequencies by dimension",
+    about = "How many respondents reported each level (no problems up to extreme problems) on each of the five dimensions. The usual first table for describing a sample's EQ-5D profiles."),
+  "112" = list(
+    title = "Level frequencies by group",
+    about = "The same level frequencies, side by side for each group. Useful for comparing the health profiles of, say, two treatment arms or patient groups."),
+  "113" = list(
+    title = "Most common health states",
+    about = "The EQ-5D health states (five-digit profiles) reported most often, with their frequencies. Shows how concentrated a sample is in a few states."),
+  "121" = list(
+    title = "Level frequencies at each timepoint",
+    about = "Level frequencies on each dimension at every timepoint, and how the number reporting any problems changes between timepoints. A first look at change over time, at the level of the sample."),
+  "122" = list(
+    title = "Paretian Classification of Health Change (PCHC)",
+    about = "Classifies each respondent's change between two timepoints as better, worse, mixed (better on some dimensions, worse on others) or no change, without weighting the dimensions. Use it to describe individual change in health profiles."),
+  "123" = list(
+    title = "Paretian Classification of Health Change (PCHC), separating those with no problems",
+    about = "The PCHC with respondents who reported no problems at both timepoints shown on their own, since they cannot improve. Useful where many report full health."),
+  "124" = list(
+    title = "Level changes in each dimension",
+    about = "For each dimension, the share of respondents moving between each pair of levels between two timepoints, and whether that is better, worse or no change. Shows which transitions drive overall change."),
+  "121fig" = list(
+    title = "Paretian Classification of Health Change (PCHC) by group, chart",
+    about = "A bar chart of the PCHC categories (better, worse, mixed, no change) for each group. For comparing patterns of change between groups at a glance."),
+  "122fig" = list(
+    title = "Dimensions that improved, by group",
+    about = "Among respondents who got better, the share who improved on each dimension, for each group. Shows where improvement happened."),
+  "123fig" = list(
+    title = "Dimensions that worsened, by group",
+    about = "Among respondents who got worse, the share who worsened on each dimension, for each group. Shows where deterioration happened."),
+  "124fig" = list(
+    title = "Dimensions with mixed change, by group",
+    about = "Among respondents with a mixed change, the share who improved and who worsened on each dimension, for each group."),
+  "125fig" = list(
+    title = "Health Profile Grid (HPG)",
+    about = "Plots each respondent's health state at one timepoint against the other, with every state of the instrument ranked from best to worst by a value set. Points above or below the diagonal show improvement or deterioration, and how large it is."),
+  "131" = list(
+    title = "EQ-5D values by Level Sum Score (LSS)",
+    about = "Summary statistics of the EQ-5D values for each Level Sum Score -- the sum of the five dimension levels, a simple measure of severity. Shows how values relate to the overall amount of problems reported."),
+  "131fig" = list(
+    title = "EQ-5D values against the Level Sum Score (LSS), chart",
+    about = "EQ-5D values plotted against the Level Sum Score. Shows the spread of values at each severity level."),
+  "132" = list(
+    title = "Distribution by Level Frequency Score (LFS)",
+    about = "How respondents are distributed across Level Frequency Scores -- how many dimensions are at each level, regardless of which dimensions. A severity summary that does not need a value set."),
+  "134" = list(
+    title = "EQ-5D values by Level Frequency Score (LFS)",
+    about = "Summary statistics of the EQ-5D values for each Level Frequency Score. Shows how values vary among profiles with the same mix of levels."),
+  "132fig" = list(
+    title = "EQ-5D values against the Level Frequency Score (LFS), chart",
+    about = "EQ-5D values plotted against the Level Frequency Score."),
+  "141" = list(
+    title = "Shannon's informativity indices",
+    about = "Shannon's index H', its maximum and the evenness index J' for each dimension and for the whole health state: how much of the classification system the sample uses. Useful for comparing how informative samples or instruments are."),
+  "141fig" = list(
+    title = "Health State Density Curve and Index (HSDC, HSDI)",
+    about = "The cumulative share of observations against the cumulative share of observed health states, and the index summarising it: 1 when observations are spread evenly over the states that occur, lower when they are concentrated in a few."),
+  "31" = list(
+    title = "EQ-5D value summary statistics",
+    about = "Mean, standard deviation, median, range and other statistics of the EQ-5D values, at each timepoint when one is selected. The standard summary of EQ-5D values."),
+  "fig34" = list(
+    title = "Distribution of EQ-5D values, chart",
+    about = "A bar chart of the EQ-5D values. Shows gaps, spikes and clusters that summary statistics hide."),
+  "32" = list(
+    title = "Mean EQ-5D value by group",
+    about = "The mean EQ-5D value and its spread in each group. For comparing groups on a single number."),
+  "fig32" = list(
+    title = "Mean EQ-5D value by group, with 95% confidence intervals (CI)",
+    about = "The mean EQ-5D value in each group with its 95% confidence interval, as a chart."),
+  "fig31" = list(
+    title = "EQ-5D values at each timepoint, box plots",
+    about = "Box plots of the EQ-5D values at each timepoint. Shows how the whole distribution moves over time."),
+  "fig33" = list(
+    title = "EQ-5D values over time by group, with 95% confidence intervals (CI)",
+    about = "The mean EQ-5D value at each timepoint, one line per group, with 95% confidence intervals. For comparing how groups change over time."),
+  "fig35" = list(
+    title = "EQ-5D values against the EQ visual analogue scale (EQ VAS)",
+    about = "A scatter plot of each respondent's EQ-5D value against their EQ VAS score -- the value from a value set against their own 0-100 rating of their health."),
+  "21" = list(
+    title = "EQ visual analogue scale (EQ VAS) summary statistics",
+    about = "Mean, standard deviation, median and other statistics of the EQ VAS score (0-100), at each timepoint, optionally for one group."),
+  "22" = list(
+    title = "EQ visual analogue scale (EQ VAS) frequencies by interval",
+    about = "How many respondents gave EQ VAS scores in each interval of the 0-100 scale. Shows heaping at round numbers."),
+  "fig21" = list(
+    title = "EQ visual analogue scale (EQ VAS) distribution, histogram",
+    about = "A histogram of the EQ VAS scores."),
+  "fig22" = list(
+    title = "EQ visual analogue scale (EQ VAS) by interval, box plots",
+    about = "Box plots of the EQ VAS scores within each interval of the scale.")
+)
+
+# What the data hold, for deciding which analyses can run. Computed once
+# from the confirmed data, not per analysis.
+# Which rows hold a complete, valid EQ-5D profile.
+valid_profiles <- function(df, rv) {
+  ver <- rv$mapping$eq5d_version %||% "3L"
+  max_level <- if (identical(ver, "3L")) 3L else 5L
+  dims <- intersect(DIMS_STD, names(df))
+  if (length(dims) == 5L)
+    Reduce(`&`, lapply(dims, function(d)
+      eq5dsuite:::.dim_status(df[[d]], max_level = max_level) == "ok"))
+  else rep(FALSE, nrow(df))
+}
+
+analysis_data_facts <- function(rv) {
+  df <- rv$processed_data
+  if (is.null(df)) return(NULL)
+  ver <- rv$mapping$eq5d_version %||% "3L"
+  dims <- intersect(DIMS_STD, names(df))
+  profile_ok <- valid_profiles(df, rv)
+  has <- function(col) col %in% names(df)
+  fu <- if (has("fu")) as.character(df$fu) else rep(NA_character_, nrow(df))
+  # Only the timepoints selected on the Data page count: the analyses factor
+  # the timepoint by them and leave every other row out. Counting all of
+  # them offered paired analyses the selection could not support (review
+  # Q09).
+  lv <- rv$mapping$levels_fu
+  if (length(lv)) fu[!fu %in% as.character(lv)] <- NA_character_
+  grp <- if (has("groupvar")) as.character(df$groupvar) else rep(NA_character_, nrow(df))
+  vas <- if (has("vas")) suppressWarnings(as.numeric(df$vas)) else rep(NA_real_, nrow(df))
+  vas_ok <- !is.na(vas) & vas >= 0 & vas <= 100
+  vcols <- value_columns(rv)
+  util_ok <- if (length(vcols))
+    Reduce(`|`, lapply(vcols, function(c) is.finite(suppressWarnings(as.numeric(df[[c]])))))
+    else rep(FALSE, nrow(df))
+  paired <- FALSE
+  pchc_states <- character(0L)
+  if (has("fu") && has("id")) {
+    keep <- profile_ok & !is.na(fu) & !is.na(df$id)
+    tp_per_id <- tapply(fu[keep], as.character(df$id[keep]),
+                        function(x) length(unique(x)))
+    paired <- any(tp_per_id >= 2L, na.rm = TRUE)
+    # The change categories present, classified as the analyses classify
+    # them: .pchc() on the selected timepoints, in order, each respondent
+    # with themselves. The figures of improvement, worsening and mixed
+    # change each need someone in their category.
+    if (paired) {
+      lvs <- if (length(lv)) as.character(lv) else unique(fu[keep])
+      d <- data.frame(id = df$id[keep], fu = factor(fu[keep], levels = lvs),
+                      df[keep, dims, drop = FALSE])
+      d <- d[order(d$id, d$fu), , drop = FALSE]
+      st <- eq5dsuite:::.pchc(d, level_fu_1 = lvs[1L])$state
+      pchc_states <- unique(st[!is.na(st)])
+    }
+  }
+  list(
+    profiles     = any(profile_ok),
+    timepoints   = length(unique(fu[profile_ok & !is.na(fu)])),
+    paired       = paired,
+    pchc_states  = pchc_states,
+    groups       = any(profile_ok & !is.na(grp)),
+    vas          = any(vas_ok),
+    utility      = any(util_ok),
+    utility_fu   = any(util_ok & !is.na(fu)),
+    utility_grp  = any(util_ok & !is.na(grp)),
+    utility_vas  = any(util_ok & vas_ok),
+    value_sets   = length(get_country_choices(ver)) > 0L)
+}
+
+# Why an analysis cannot run on these data, in words; empty when it can.
+# Starts from the registry's `needs` (unmet_needs()), then checks that the
+# data in those columns can support it -- a Timepoint column with one
+# timepoint does not make a change analysis possible.
+analysis_prerequisites <- function(spec, rv, facts = analysis_data_facts(rv)) {
+  if (is.null(facts)) return("validated data")
+  out <- unmet_needs(spec, rv)
+  if (length(out)) return(out)
+  n <- spec$needs
+  if (identical(spec$component, "profile") && !facts$profiles)
+    out <- c(out, "at least one complete, valid EQ-5D profile")
+  if (identical(spec$group, "Longitudinal") && facts$timepoints < 2L)
+    out <- c(out, "at least two timepoints")
+  if (all(c("fu", "id") %in% n) && !facts$paired)
+    out <- c(out, "a respondent with valid profiles at two timepoints")
+  if ("groupvar" %in% n && !"utility" %in% n && !facts$groups)
+    out <- c(out, "a group recorded for some respondents")
+  if ("vas" %in% n && !"utility" %in% n && !facts$vas)
+    out <- c(out, "EQ VAS scores between 0 and 100")
+  if ("utility" %in% n) {
+    if (!facts$utility) out <- c(out, "EQ-5D values in a value column")
+    else if ("vas" %in% n && !facts$utility_vas)
+      out <- c(out, "EQ-5D values and EQ VAS scores for the same respondents")
+    else if ("groupvar" %in% n && !facts$utility_grp)
+      out <- c(out, "EQ-5D values for respondents with a group")
+    else if ("fu" %in% n && !facts$utility_fu)
+      out <- c(out, "EQ-5D values at a timepoint")
+  }
+  if ("country" %in% spec$opts && !facts$value_sets)
+    out <- c(out, "a value set for this instrument")
+  if (!length(out) && spec$id %in% names(PCHC_CATEGORY_NEEDED)) {
+    need <- PCHC_CATEGORY_NEEDED[[spec$id]]
+    if (!need[1L] %in% facts$pchc_states) out <- c(out, need[2L])
+  }
+  out
+}
+
+# The figures that plot one change category, and what they need.
+PCHC_CATEGORY_NEEDED <- list(
+  "122fig" = c("Improve",      "a respondent who improved"),
+  "123fig" = c("Worsen",       "a respondent who got worse"),
+  "124fig" = c("Mixed change", "a respondent with a mixed change"))
+
+# Why the options chosen for an analysis leave it nothing to run on; empty
+# when they do. analysis_prerequisites() asks whether some choice of options
+# can work -- what the catalogue offers; this asks whether the current one
+# does, for the Run button. With pairs only at pre/post, the Health Profile
+# Grid is offered, but pre/mid cannot run (verification V01). It looks at
+# the same rows the analysis's prep would.
+analysis_option_unmet <- function(spec, input, rv) {
+  df <- rv$processed_data
+  if (is.null(df)) return(character(0L))
+  out <- character(0L)
+  if ("two_fu" %in% spec$opts && all(c("fu", "id") %in% names(df))) {
+    sel <- as.character(input$fu_levels %||% character(0L))
+    # Not exactly two chosen: the Run handler says so itself.
+    if (length(sel) == 2L) {
+      fu <- as.character(df$fu)
+      keep <- valid_profiles(df, rv) & fu %in% sel & !is.na(df$id)
+      both <- tapply(fu[keep], as.character(df$id[keep]),
+                     function(x) length(unique(x)) == 2L)
+      if (!any(both, na.rm = TRUE))
+        out <- c(out, sprintf(
+          "a respondent with valid profiles at both \"%s\" and \"%s\"",
+          sel[1L], sel[2L]))
+    }
+  }
+  if ("group_filter" %in% spec$opts && "vas" %in% spec$needs &&
+      "vas" %in% names(df)) {
+    sel <- group_filter_label(input$group_filter)
+    if (!is.null(sel) && "groupvar" %in% names(df)) {
+      # The rows the analysis keeps: the prep's own filter, then the
+      # selected timepoints.
+      g <- eq5dsuite:::.apply_filter(df, list(column = "groupvar", value = sel))
+      lv <- rv$mapping$levels_fu
+      if (length(lv) && "fu" %in% names(g))
+        g <- g[as.character(g$fu) %in% as.character(lv), , drop = FALSE]
+      vas <- suppressWarnings(as.numeric(g$vas))
+      if (!any(!is.na(vas) & vas >= 0 & vas <= 100))
+        out <- c(out, paste0("EQ VAS scores between 0 and 100 in the group \"",
+                             sel, "\""))
+    }
+  }
+  out
+}
+
+# The analyses that can run on the confirmed data, in registry order.
+available_analyses <- function(rv) {
+  facts <- analysis_data_facts(rv)
+  if (is.null(facts)) return(list())
+  Filter(function(s) !length(analysis_prerequisites(s, rv, facts)), ANALYSES)
+}
+
+# The modal itself is catalogue_modal() in mod_catalogue.R.
+
 # ── UI ────────────────────────────────────────────────────────────────────────
 
 mod_analysis_ui <- function(id) {
@@ -389,6 +658,10 @@ mod_analysis_ui <- function(id) {
   page_shell(
     sidebar_title = "Analysis",
     sidebar = shiny::tagList(
+      shiny::actionButton(ns("catalogue"),
+                          "See catalogue of available analyses",
+                          class = "btn-outline-primary w-100 mb-3",
+                          icon = shiny::icon("list")),
       shiny::selectInput(ns("component"), "Component",
                          choices = COMPONENTS, selected = "profile"),
       shiny::selectInput(ns("output"), "Output",
@@ -411,9 +684,35 @@ mod_analysis_server <- function(id, rv) {
     output$guard <- shiny::renderUI(analysis_guard(rv, ns))
     analysis_guard_server(input, session)
 
+    # An analysis chosen from the catalogue, waiting for its component's
+    # outputs to be offered.
+    pending_output <- shiny::reactiveVal(NULL)
+
     shiny::observeEvent(input$component, {
-      shiny::updateSelectInput(session, "output",
-                               choices = analysis_choices(input$component))
+      want <- pending_output()
+      pending_output(NULL)
+      ch <- analysis_choices(input$component)
+      shiny::updateSelectInput(
+        session, "output", choices = ch,
+        selected = if (!is.null(want) && want %in% unlist(ch)) want)
+    })
+
+    # ── Catalogue ────────────────────────────────────────────────────────────
+    shiny::observeEvent(input$catalogue, {
+      shiny::showModal(catalogue_modal(ns, available_analyses(rv)))
+    })
+
+    # Select the analysis in the sidebar; do not run it.
+    shiny::observeEvent(input$catalogue_pick, {
+      s <- analysis_spec(input$catalogue_pick)
+      shiny::req(s)
+      shiny::removeModal()
+      if (identical(input$component, s$component)) {
+        shiny::updateSelectInput(session, "output", selected = s$id)
+      } else {
+        pending_output(s$id)
+        shiny::updateSelectInput(session, "component", selected = s$component)
+      }
     })
 
     spec <- shiny::reactive({
@@ -431,10 +730,30 @@ mod_analysis_server <- function(id, rv) {
       hint(s$desc)
     })
 
+    # The selected timepoints present in the data, in the selected order --
+    # the ones the analyses use. Every value, sorted, used to be offered.
     timepoints <- shiny::reactive({
       df <- rv$processed_data
       if (is.null(df) || !"fu" %in% names(df)) return(character(0L))
-      sort(unique(as.character(df[["fu"]])))
+      present <- unique(as.character(df[["fu"]]))
+      present <- present[!is.na(present)]
+      lv <- as.character(rv$mapping$levels_fu)
+      if (length(lv)) lv[lv %in% present] else sort(present)
+    })
+
+    # What the data themselves still lack for this analysis, beyond the
+    # variables it needs: the same checks as the catalogue.
+    data_unmet <- shiny::reactive({
+      s <- spec(); shiny::req(s)
+      if (length(missing())) return(character(0L))
+      analysis_prerequisites(s, rv)
+    })
+
+    # And what the options chosen leave it without (verification V01).
+    option_unmet <- shiny::reactive({
+      s <- spec(); shiny::req(s)
+      if (length(missing()) || length(data_unmet())) return(character(0L))
+      analysis_option_unmet(s, input, rv)
     })
 
     groups <- shiny::reactive({
@@ -456,6 +775,13 @@ mod_analysis_server <- function(id, rv) {
           choices = cols,
           selected = shiny::isolate(input$utility_col) %||% cols[1L])))
       }
+      if ("country" %in% s$opts) {
+        ch <- get_country_choices(.ver(rv))
+        bits <- c(bits, list(shiny::selectizeInput(
+          ns("country"), paste0("EQ-5D-", .ver(rv), " value set"),
+          choices = c("(select)" = "", ch),
+          selected = shiny::isolate(input$country) %||% "")))
+      }
       if ("topn" %in% s$opts) {
         bits <- c(bits, list(shiny::numericInput(
           ns("topn"), "How many states", value = 10L,
@@ -475,8 +801,9 @@ mod_analysis_server <- function(id, rv) {
         if (length(g) > 0L) {
           bits <- c(bits, list(shiny::selectInput(
             ns("group_filter"), "Restrict to group",
-            choices = c("All" = "All", stats::setNames(g, g)),
-            selected = "All")))
+            choices = c("All groups" = GROUP_FILTER_ALL,
+                        stats::setNames(group_filter_value(g), g)),
+            selected = GROUP_FILTER_ALL)))
         }
       }
       if (length(bits) == 0L) return(NULL)
@@ -498,15 +825,24 @@ mod_analysis_server <- function(id, rv) {
           note("warning", paste0(
             "This analysis needs ", paste(miss, collapse = " and "),
             if (wants_value)
-              ". Calculate one from the EQ-5D dimensions, or map a column you
-               already have."
-            else ". Map it on the Data page.")),
+              ". Calculate one from the EQ-5D dimensions, or select a column you
+               already have on the Data page."
+            else ". Select it on the Data page.")),
           if (wants_value)
             shiny::actionButton(ns("goto_values"), "Calculate EQ-5D values",
                                 class = "btn-primary w-100",
                                 icon = shiny::icon("calculator"))
         ))
       }
+      if (length(data_unmet()))
+        return(note("warning", paste0(
+          "The confirmed data cannot support this analysis: it needs ",
+          paste(data_unmet(), collapse = " and "), ".")))
+      if (length(option_unmet()))
+        return(note("warning", paste0(
+          "These options leave nothing to analyse: this needs ",
+          paste(option_unmet(), collapse = " and "),
+          ". Choose others above.")))
       shiny::actionButton(ns("run"), "Run", class = "btn-primary w-100",
                           icon = shiny::icon("play"))
     })
@@ -519,11 +855,18 @@ mod_analysis_server <- function(id, rv) {
 
     shiny::observeEvent(input$run, {
       s <- spec()
-      shiny::req(s, rv$processed_data, length(missing()) == 0L)
+      shiny::req(s, rv$processed_data, length(missing()) == 0L,
+                 length(data_unmet()) == 0L, length(option_unmet()) == 0L)
 
       if ("utility_col" %in% s$opts &&
           !isTRUE(input$utility_col %in% value_columns(rv))) {
         shiny::showNotification("Choose a utility column first.",
+                                type = "warning", duration = 4)
+        return()
+      }
+      if ("country" %in% s$opts &&
+          !isTRUE(input$country %in% get_country_choices(.ver(rv)))) {
+        shiny::showNotification("Choose a value set first.",
                                 type = "warning", duration = 4)
         return()
       }
@@ -535,9 +878,12 @@ mod_analysis_server <- function(id, rv) {
 
       p  <- s$prep(input, rv)
       # The code shown to the user, and the record the script is built from,
-      # are the same arguments deparsed the same way.
-      cs <- format_call(s$fn, c(list(df = quote(analysis_data)), p$args))
-      rec <- list(fn = s$fn, args = p$args, prep = p$prep, type = s$type)
+      # are the same arguments deparsed the same way -- and the same
+      # restriction of the rows, where there is one.
+      cs <- format_call(s$fn, c(list(df = quote(analysis_data)), p$args),
+                        filter = p$filter)
+      rec <- list(fn = s$fn, args = p$args, prep = p$prep, type = s$type,
+                  filter = p$filter)
 
       tryCatch({
         out <- run_quietly(do.call(pkg_fn(s$fn), c(list(df = p$df), p$args)))
@@ -560,6 +906,14 @@ mod_analysis_server <- function(id, rv) {
       res$data <- NULL; res$plot <- NULL; res$call <- NULL; res$spec <- NULL
     })
 
+    # And when the data it came from change: a confirmed dataset or variable
+    # selection, completed validation, or an overwritten value column. The
+    # saved results were cleared on these, but the one on screen stayed,
+    # showing the old data's numbers (review Q12).
+    shiny::observeEvent(rv$revision, {
+      res$data <- NULL; res$plot <- NULL; res$call <- NULL; res$spec <- NULL
+    }, ignoreInit = TRUE)
+
     # ── The one result card ──────────────────────────────────────────────────
     output$result <- shiny::renderUI({
       if (is.null(rv$processed_data)) return(NULL)
@@ -570,10 +924,10 @@ mod_analysis_server <- function(id, rv) {
         return(bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, hint(
           if ("an EQ-5D value column" %in% miss)
             "This analysis needs a column of EQ-5D values. Calculate one on the
-             Calculate EQ-5D values page, or map a column you already have on
+             Calculate EQ-5D values page, or select a column you already have on
              the Data page."
           else if (length(miss) > 0L)
-            "Map the columns this analysis needs, then come back."
+            "Select the variables this analysis needs on the Data page, then come back."
           else paste0("Press Run to produce ", cur$label, ".")))))
       }
       bslib::card(

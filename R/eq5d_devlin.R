@@ -48,8 +48,11 @@ eq5d_profile_level_summary_by_group <- function(df,
                        name_cat = NULL,
                        levels_cat = NULL,
                        eq5d_version = NULL) {
-  tmp <- .freqtab(df, names_eq5d, name_cat, levels_cat, eq5d_version)
-  tmp[-(NROW(tmp)-(1:2)),]
+  # Groups are not in any order, so there is no change between them to
+  # report. The change and rank rows used to be computed and then removed by
+  # position, which removed the wrong rows whenever either was absent.
+  .freqtab(df, names_eq5d, name_cat, levels_cat, eq5d_version,
+           add_summary_problems_change = FALSE)
 }
 
 #' eq5d_profile_change_summary: Frequency of levels by dimensions, by follow-up
@@ -61,6 +64,20 @@ eq5d_profile_level_summary_by_group <- function(df,
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @param eq5d_version Version of the EQ-5D instrument
 #' @return Summary data frame.
+#' @details
+#' Counts are made against the number of non-missing responses on each
+#' dimension at each follow-up. Where that number is positive, every level of
+#' the instrument has a row and every count is a number: a level, or a
+#' problem, that nobody reported is 0. Where it is zero -- nobody recorded at
+#' that follow-up, or everyone missing on that dimension -- the counts are
+#' \code{NA}, because the data say nothing about them.
+#'
+#' The change in the number reporting problems is between consecutive levels
+#' of \code{levels_fu}, and is \code{NA} where either count is. The relative
+#' change is \code{NA} where the earlier count is 0. These are counts at each
+#' follow-up, not changes within respondents; for those, see
+#' \code{\link{eq5d_profile_pchc_table}} and
+#' \code{\link{eq5d_profile_dimension_change_table}}.
 #' @examples
 #' eq5d_profile_change_summary(
 #'   df = example_data,
@@ -76,13 +93,16 @@ eq5d_profile_change_summary <- function(df,
                        name_fu = NULL,
                        levels_fu = NULL,
                        eq5d_version = NULL) {
-  mc <- as.list(match.call()[-1])
-  
+  # The arguments are passed on as values. They used to be forwarded through
+  # match.call() -- the caller's unevaluated expressions -- and evaluated
+  # here, so a call from inside another function with a local variable as an
+  # argument failed, or picked up something else of the same name.
   if(is.null(name_fu)){
-    if("follow-up" %in% colnames(df)) mc$name_fu <- "follow_up"
-    if("fu" %in% colnames(df)) mc$name_fu <- "fu"
+    if("follow-up" %in% colnames(df)) name_fu <- "follow_up"
+    if("fu" %in% colnames(df)) name_fu <- "fu"
   }
-  do.call(.freqtab, mc)
+  .freqtab(df = df, names_eq5d = names_eq5d, name_fu = name_fu,
+           levels_fu = levels_fu, eq5d_version = eq5d_version)
 }
 
 #' eq5d_profile_top_states: Prevalence of the 10 most frequently observed self-reported health states
@@ -431,6 +451,10 @@ eq5d_profile_dimension_change_table <- function(df,
   names(df)[names(df) == name_id] <- "id"
   df <- .prep_eq5d(df = df, names = names_eq5d)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  # Rows whose follow-up is not one of levels_fu are NA here, and
+  # .prep_fu() has said they are excluded. They used to be paired all the
+  # same, sorted after the respondent's other records.
+  df <- df[!is.na(df$fu), , drop = FALSE]
   # sort by id - time
 
   df <- df[order(df$id, df$fu), , drop = FALSE]
@@ -452,14 +476,23 @@ eq5d_profile_dimension_change_table <- function(df,
   df_long <- df_long[order(df_long$domain, df_long$id, df_long$fu), , drop = FALSE]
   rownames(df_long) <- NULL
 
-  # compute lagged difference (dplyr::lag equivalent)
+  # Each record is compared with the one before it, but only within one
+  # dimension and one respondent: the first record of each, and every record
+  # at the first timepoint, has no change. This is the pairing the PCHC
+  # analyses use (see .first_of_subject()). The lag used to run across the
+  # whole table, so a respondent without a baseline was compared with the
+  # previous respondent's last record.
+  n_long <- nrow(df_long)
+  new_domain <- if (n_long == 0L) logical(0) else
+    c(TRUE, df_long$domain[-1] != df_long$domain[-n_long])
+  no_prev <- new_domain | .first_of_subject(df_long$id) |
+    (!is.na(df_long$fu) &
+       as.character(df_long$fu) == as.character(level_fu_1))
   prev_val <- c(NA_real_, head(df_long$value, -1))
+  prev_val[no_prev] <- NA_real_
   df_long$diff <- prev_val - df_long$value
-  df_long$level_change <- ifelse(is.na(prev_val), NA_character_,
+  df_long$level_change <- ifelse(is.na(df_long$diff), NA_character_,
                                  paste0(prev_val, "-", df_long$value))
-  # set baseline to NA
-  df_long$diff[as.character(df_long$fu) == as.character(level_fu_1)] <- NA_real_
-  df_long$level_change[as.character(df_long$fu) == as.character(level_fu_1)] <- NA_character_
 
   # remove NAs (baseline rows) and classify difference
   df_diff <- df_long[!is.na(df_long$diff), , drop = FALSE]
@@ -927,26 +960,68 @@ eq5d_profile_shannon <- function(df,
 
 #' eq5d_profile_density_curve: Generate a Health State Density Curve (HSDC) for EQ-5D Data
 #'
-#' This function calculates and plots the Health State Density Curve (HSDC) for a given
-#' EQ-5D dataset. It concatenates dimension values to form health state profiles, filters
-#' out invalid states based on the specified EQ-5D version, then computes the cumulative
-#' distribution of profiles (profiles vs. observations). A diagonal reference line
-#' indicates a perfectly even distribution. The function also calculates the Health State
-#' Density Index (HSDI), representing how sharply the observed distribution deviates from
-#' the diagonal.
+#' Calculates and plots the Health State Density Curve (HSDC) and the Health
+#' State Density Index (HSDI) of Zamora et al. (2018), which describe how
+#' evenly the observations are spread over the health state profiles that
+#' occur in the data. Profiles are formed from the five dimensions; a row
+#' whose profile is not valid for the instrument is excluded with a warning.
 #'
 #' @details
-#' The HSDI is twice the area between the curve and the diagonal, so 0 is a
-#' perfectly even distribution across the observed profiles and 1 the most
-#' concentrated.
+#' \strong{The curve.} The \eqn{S} distinct profiles observed are ranked from the
+#' most to the least frequent. For \eqn{i = 1, \dots, S}{i = 1, ..., S}, \eqn{x_i} is the
+#' cumulative proportion of observations in the first \eqn{i} profiles and
+#' \eqn{y_i = i / S} the cumulative proportion of profiles. The HSDC plots
+#' \eqn{y} against \eqn{x}, from \eqn{(0, 0)} to \eqn{(1, 1)}. The diagonal
+#' is perfect evenness, every profile equally frequent; the further the curve
+#' lies below it, the more the observations are concentrated in a few
+#' profiles.
 #'
-#' Note what the index is relative to. \code{CumPropStates} is
-#' \code{seq_len(n) / n}, where \code{n} is the number of health state
-#' profiles **observed in these data**, not the 243 (EQ-5D-3L, EQ-5D-Y-3L) or
-#' 3125 (EQ-5D-5L) profiles the instrument allows. The index therefore
-#' describes how unevenly the observations are spread over the profiles that
-#' appear, and is not comparable between datasets in which different numbers of
-#' profiles appear.
+#' \strong{The index.} Following Zamora et al. (2018, equation 1),
+#' \deqn{HSDI = \sum_{i=1}^{S} (x_i - x_{i-1})(y_i + y_{i-1}),}{HSDI = sum over i of (x[i] - x[i-1]) (y[i] + y[i-1]),}
+#' with \eqn{x_0 = y_0 = 0}: twice the area under the curve. It is analogous
+#' to the Gini coefficient, but runs the other way: the HSDI is
+#' \eqn{1 - G}, where \eqn{G} is twice the area between the curve and the
+#' diagonal.
+#'
+#' \strong{Direction.} Higher is more even. The HSDI is 1 when every observed
+#' profile is equally frequent, including the case of a single profile, and
+#' falls as the observations concentrate in fewer of the observed profiles.
+#' Profiles of equal frequency may be ranked in either order without changing
+#' it.
+#'
+#' \strong{Attainable bounds.} With \eqn{N} observations over \eqn{S} observed
+#' profiles, the HSDI lies in
+#' \deqn{1/S + (S - 1)/N \le HSDI \le 1.}{1/S + (S - 1)/N <= HSDI <= 1.}
+#' The lower bound is reached when one profile holds \eqn{N - S + 1}
+#' observations and each of the others one. The HSDI is therefore never
+#' below \eqn{1/S}, and never 0: the 0 of "total inequality" in Zamora et al.
+#' is a limit, approached only as \eqn{S} and \eqn{N/S} both grow. With two
+#' profiles it cannot fall below 0.5.
+#'
+#' \strong{What it is relative to.} Only the profiles that occur in these data
+#' count: \eqn{y_i} is \eqn{i / S} for the \eqn{S} profiles observed, not
+#' for the 243 (EQ-5D-3L, EQ-5D-Y-3L) or 3,125 (EQ-5D-5L) the instrument
+#' allows, and a profile nobody reported does not enter. The index describes
+#' how evenly observations are spread over the profiles that appear. Because
+#' its attainable range depends on \eqn{S} and \eqn{N}, compare it between
+#' samples with care. Repeating a whole distribution over more profiles
+#' leaves it exactly unchanged (Zamora et al.'s independence of \eqn{S}),
+#' but samples whose distributions differ in shape are not on a common scale.
+#'
+#' \strong{Worked values.} Two profiles observed equally often: 1. Frequencies
+#' 9 and 1: \eqn{0.9 \times 0.5 + 0.1 \times 1.5 = 0.6}{0.9 x 0.5 + 0.1 x 1.5 = 0.6}. Frequencies 999
+#' and 1: 0.501, the paper's "0.5" for this case. Frequencies 2, 1 and 1:
+#' \eqn{(0.5 \times 1 + 0.25 \times 3 + 0.25 \times 5) / 3 = 5/6}{(0.5 x 1 + 0.25 x 3 + 0.25 x 5) / 3 = 5/6},
+#' the lower bound for \eqn{N = 4}, \eqn{S = 3}.
+#'
+#' @references
+#' Zamora B, Parkin D, Feng Y, Bateman A, Herdman M, Devlin N (2018). New
+#' methods for analysing the distribution of EQ-5D observations. OHE
+#' Research Paper 18/03. London: Office of Health Economics.
+#' \url{https://www.ohe.org/publications/new-methods-analysing-distribution-eq-5d-observations/}
+#'
+#' Devlin N, Parkin D, Janssen B (2020). Methods for Analysing and Reporting
+#' EQ-5D Data. Cham: Springer. \doi{10.1007/978-3-030-47622-9}
 #'
 #' @param df Data frame with the EQ-5D columns
 #' @param names_eq5d Character vector of column names for the EQ-5D dimensions
@@ -1059,6 +1134,10 @@ eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
 #' @param levels_fu Character vector containing the order of the values in the follow-up column. 
 #' @return Summary data frame with one row per statistic and one column per
 #'   follow-up level, in the order given by \code{levels_fu}.
+#'   \code{"Missing (\%)"} is a percentage, from 0 to 100, of the rows at
+#'   that follow-up (the \code{"Total sample"} row) with no usable
+#'   value; it is \code{NA} for a follow-up with no rows. Before 2.1.0
+#'   it was a proportion.
 #' @details
 #' Skewness and kurtosis are the population (biased) estimators
 #' \eqn{m_3 / m_2^{3/2}} and \eqn{m_4 / m_2^2}, as returned by
@@ -1184,6 +1263,10 @@ eq5d_vas_distribution_table <- function(df,
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @return Summary data frame with one row per statistic and one column per
 #'   follow-up level, in the order given by \code{levels_fu}.
+#'   \code{"Missing (\%)"} is a percentage, from 0 to 100, of the rows at
+#'   that follow-up (the \code{"Total sample"} row) with no usable
+#'   value; it is \code{NA} for a follow-up with no rows. Before 2.1.0
+#'   it was a proportion.
 #' @details
 #' Skewness and kurtosis are the population (biased) estimators
 #' \eqn{m_3 / m_2^{3/2}} and \eqn{m_4 / m_2^2}, as returned by
@@ -2165,6 +2248,13 @@ eq5d_profile_health_profile_grid <- function(df,
   name_fu    <- temp$name_fu
   levels_fu  <- temp$levels_fu
   eq5d_version <- temp$eq5d_version
+
+  # The grid plots one timepoint against another, so it needs exactly two.
+  if (length(levels_fu) != 2L)
+    stop("The Health Profile Grid compares exactly two timepoints; ",
+         "`levels_fu` has ", length(levels_fu), ": ",
+         paste0("\"", levels_fu, "\"", collapse = ", "),
+         ". Give the two to compare, baseline first.", call. = FALSE)
   
   # Check columns exist
   names_all <- c(name_id,  names_eq5d, name_fu)
@@ -2178,9 +2268,13 @@ eq5d_profile_health_profile_grid <- function(df,
   # Rename for internal use
   names(df)[names(df) == name_id] <- "id"
 
-  # Prepare EQ-5D & Follow-up columns
-  df <- .prep_eq5d(df = df, names = names_eq5d)
+  # Prepare EQ-5D & Follow-up columns. The instrument is passed so that a
+  # level it does not have becomes NA, and the dimensions are mo..ad from here
+  # on whatever the caller called them. Rows at a timepoint other than the
+  # two compared are dropped, as .prep_fu() says they are.
+  df <- .prep_eq5d(df = df, names = names_eq5d, eq5d_version = eq5d_version)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  df <- df[!is.na(df$fu), , drop = FALSE]
 
   # Every state the instrument allows, valued and ordered best to worst. The
   # states absent from the data are ranked too: a state's rank is its
@@ -2204,6 +2298,10 @@ eq5d_profile_health_profile_grid <- function(df,
   # .pchc() compares the first level in levels_fu (e.g. "Pre-op") vs. the second (e.g. "Post-op")
   df <- .pchc(df = df, level_fu_1 = levels_fu[1], add_noprobs = TRUE)
   df <- df[!is.na(df$state), , drop = FALSE]
+  if (nrow(df) == 0L)
+    stop("No respondent has a valid EQ-5D profile at both \"", levels_fu[1],
+         "\" and \"", levels_fu[2], "\", so there is nothing to plot.",
+         call. = FALSE)
   # The factor levels for PCHC categories can be: "No problems", "No change", "Improve", "Worsen", "Mixed change"
   df$state_noprobs <- factor(
     df$state_noprobs,
@@ -2215,8 +2313,9 @@ eq5d_profile_health_profile_grid <- function(df,
   vs <- vs[order(-vs$utility), , drop = FALSE]
   vs$rank <- seq_len(nrow(vs))
   
-  # Build profiles
-  eqdims <- names_eq5d
+  # Build profiles. .prep_eq5d() renamed the dimensions; the caller's names
+  # are gone, and looking them up failed with "replacement has 0 rows".
+  eqdims <- c("mo", "sc", "ua", "pd", "ad")
   for (d in eqdims) {
     df[[paste0(d, "_t2")]] <- df[[d]]
     df[[paste0(d, "_t1")]] <- df[[d]] + df[[paste0(d, "_diff")]]

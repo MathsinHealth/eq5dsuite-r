@@ -10,17 +10,18 @@ server <- function(input, output, session) {
     results        = list(), # list of saved analysis results
     steps          = list(), # structured record of the session, for the script
     value_cols     = character(0), # EQ-5D value columns in processed_data
-    load_example   = 0L      # bumped by the Home page's example button
+    load_example   = 0L,     # bumped by the Home page's example button
+    revision       = 0L      # moved on whenever the analysed data change
   )
 
   # ── Module servers ─────────────────────────────────────────────────────────
+  mod_version_server("version")
   mod_home_server("home",             rv)
   mod_data_server("data",             rv)
   mod_validation_server("validation", rv)
   mod_values_server("values",         rv)
   mod_analysis_server("analysis",     rv)
-  mod_results_server("results",       rv)
-  mod_export_server("export",         rv)
+  mod_export_server("export",         rv)   # the Results and export page
 
   # ── Online only ─────────────────────────────────────────────────────────
   if (ONLINE$enabled) {
@@ -40,7 +41,7 @@ server <- function(input, output, session) {
                  "for other people."),
         shiny::p(shiny::strong("Your results are not saved."), " Anything you ",
                  "have run is lost when the session ends. Download what you ",
-                 "need from the Export page first \u2014 the Word report, the ",
+                 "need from the Results and export page first \u2014 the Word report, the ",
                  "archive, or the R script."),
         footer = shiny::tagList(
           shiny::modalButton("Close"),

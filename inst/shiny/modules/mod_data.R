@@ -1,4 +1,4 @@
-# mod_data.R — upload a dataset and map its columns
+# mod_data.R — upload a dataset and select its variables
 #
 # Sidebar: source, version, the five dimension pickers, optional columns in a
 # disclosure, Confirm. Main area: a preview of the working dataset.
@@ -43,6 +43,10 @@ mod_data_server <- function(id, rv) {
     ns <- session$ns
 
     active_data <- shiny::reactiveVal(NULL)
+    # How the data on screen were loaded. It becomes the session's load step
+    # only when the mapping is confirmed: choosing a file must not change the
+    # record of the data the current results came from.
+    pending_load <- shiny::reactiveVal(NULL)
 
     shiny::observeEvent(input$file, {
       ext <- tolower(tools::file_ext(input$file$name))
@@ -72,8 +76,8 @@ mod_data_server <- function(id, rv) {
         }
 
         active_data(d)
-        record_step(rv, "load", source = "file", file = input$file$name,
-                    ext = ext, read_args = read_args)
+        pending_load(list(source = "file", file = input$file$name,
+                          ext = ext, read_args = read_args))
       }, error = function(e) {
         # The message can quote the file's contents, so online it is shown to
         # the person who uploaded it and goes no further.
@@ -88,9 +92,10 @@ mod_data_server <- function(id, rv) {
 
     load_example <- function() {
       active_data(eq5dsuite::example_data)
-      record_step(rv, "load", source = "example")
-      shiny::showNotification("Example dataset loaded (10,000 rows).",
-                              type = "message", duration = 3)
+      pending_load(list(source = "example"))
+      shiny::showNotification(
+        "Example dataset loaded (10,000 rows). Select its variables and confirm.",
+        type = "message", duration = 3)
     }
 
     shiny::observeEvent(input$use_example, load_example())
@@ -115,8 +120,8 @@ mod_data_server <- function(id, rv) {
     output$mapping_ui <- shiny::renderUI({
       df <- uploaded()
       if (is.null(df)) {
-        return(hint("Upload a file, or load the example dataset, to map ",
-                    "its columns."))
+        return(hint("Upload a file, or load the example dataset, to select ",
+                    "its variables."))
       }
       cols      <- names(df)
       cols_none <- c("(none)" = "")
@@ -158,7 +163,7 @@ mod_data_server <- function(id, rv) {
       if (is.null(uploaded())) return(NULL)
       shiny::tagList(
         shiny::hr(),
-        shiny::actionButton(ns("confirm"), "Confirm mapping",
+        shiny::actionButton(ns("confirm"), "Confirm variables",
                             class = "btn-primary w-100",
                             icon = shiny::icon("check"))
       )
@@ -207,7 +212,7 @@ mod_data_server <- function(id, rv) {
     shiny::observeEvent(input$confirm, {
       if (!isTRUE(mapping_complete())) {
         shiny::showNotification(
-          "Map all five EQ-5D dimensions to distinct columns before confirming.",
+          "Select a different column for each of the five EQ-5D dimensions before confirming.",
           type = "warning", duration = 5
         )
         return()
@@ -230,18 +235,27 @@ mod_data_server <- function(id, rv) {
         name_utility  = opt(input$col_utility),
         country       = ""   # set on the Calculate EQ-5D values page
       )
-      record_step(rv, "map", mapping = rv$mapping)
-
-      # Reset downstream state when the mapping changes. An existing value
-      # column becomes "utility" in the working dataset, and is the first
-      # entry in the list the Analysis page offers.
-      rv$processed_data <- NULL
+      # A new revision: results, value columns and value steps from the
+      # previous data or mapping are cleared (see start_revision()). An
+      # existing value column becomes "utility" in the working dataset, and is
+      # the first entry in the list the Analysis page offers.
+      cleared <- start_revision(rv, pending_load(), rv$mapping)
       rv$value_cols <- if (is.null(opt(input$col_utility))) character(0L)
                        else "utility"
 
+      gone <- c(if (cleared$results > 0L)
+                  sprintf("%d saved result%s", cleared$results,
+                          if (cleared$results == 1L) "" else "s"),
+                if (cleared$values > 0L)
+                  sprintf("%d calculated value column%s", cleared$values,
+                          if (cleared$values == 1L) "" else "s"))
       shiny::showNotification(
-        "Mapping confirmed. Next: Validation.",
-        type = "message", duration = 4
+        paste0("Variables confirmed. Next: Validation.",
+               if (length(gone))
+                 paste0(" ", paste(gone, collapse = " and "),
+                        " from the previous data were cleared.")),
+        type = if (length(gone)) "warning" else "message",
+        duration = if (length(gone)) 8 else 4
       )
     })
 

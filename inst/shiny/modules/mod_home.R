@@ -19,7 +19,7 @@ mod_home_ui <- function(id) {
 
     shiny::p(
       class = "home-lede",
-      "Upload a dataset of EQ-5D responses and map its columns once. The app ",
+      "Upload a dataset of EQ-5D responses and select its variables once. The app ",
       "then produces the analyses set out in Devlin, Parkin and Janssen ",
       "(2020), ",
       shiny::tags$em("Methods for Analyzing and Reporting EQ-5D Data"),

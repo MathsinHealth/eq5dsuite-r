@@ -25,7 +25,13 @@ return the findings.}
 \value{
 Invisibly, a data frame with one row per finding and the columns
   \code{type} (\code{"ok"}, \code{"warning"} or \code{"error"}) and
-  \code{message}. The messages are plain text.
+  \code{message}. The messages are plain text. Attribute \code{"details"}
+  is a list with one element per finding: \code{NULL}, or a list with
+  \code{summary} and \code{records} (data frames: the values found and
+  their counts, and the records affected, by row number and, where those
+  are selected, patient ID and timepoint), \code{notes}, \code{emphasis}
+  and \code{denominator} (text). The details describe the data and change
+  nothing.
 }
 \description{
 Runs the checks the Shiny app's Validation page runs: that the dimension

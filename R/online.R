@@ -176,13 +176,19 @@ eq5d_online_notice <- function(which = c("data", "upload", "local")) {
   if (!is.null(override)) return(as.character(override))
 
   switch(which,
+    # Accurate about the disk (review I05): Shiny writes an upload to a
+    # temporary file on the server, and the Word report and the archive are
+    # built in temporary files too. The app keeps no copy and deletes them
+    # when the session ends.
     data = paste0(
-      "Your data are processed only for this session. They are held in memory ",
-      "while you work, are not stored on the server, and are deleted when the ",
-      "session ends or times out. Please upload de-identified data only."),
+      "Your data are processed only for this session. While you work, the ",
+      "file you upload and any report you download are held in temporary ",
+      "files on the server; they are deleted when the session ends or times ",
+      "out, and no copy is kept. Please upload de-identified data only."),
     upload = paste0(
-      "Processed for this session only, not stored, and deleted when the ",
-      "session ends. Please upload de-identified data only."),
+      "Processed for this session only: held in temporary files on the ",
+      "server and deleted when the session ends. Please upload ",
+      "de-identified data only."),
     local = paste0(
       "For sensitive or large datasets, run the app on your own machine: ",
       "install eq5dsuite and run eq5dsuite::run_app(). Nothing leaves your ",

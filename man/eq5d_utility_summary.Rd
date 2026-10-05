@@ -22,6 +22,10 @@ If NULL (default value), the levels will be ordered in the order of appearance i
 \value{
 Summary data frame with one row per statistic and one column per
   follow-up level, in the order given by \code{levels_fu}.
+  \code{"Missing (\%)"} is a percentage, from 0 to 100, of the rows at
+  that follow-up (the \code{"Total sample"} row) with no usable
+  value; it is \code{NA} for a follow-up with no rows. Before 2.1.0
+  it was a proportion.
 }
 \description{
 eq5d_utility_summary: EQ-5D values: by timepoints

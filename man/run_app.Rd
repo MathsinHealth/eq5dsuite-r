@@ -31,7 +31,8 @@ The app has seven pages, in the order the work is done:
   \item{Home}{What the app does, what data it needs, and a button to load
     the bundled \code{\link{example_data}}.}
   \item{Data}{Upload a \code{.csv}, \code{.xlsx} or \code{.rds} file, set
-    the instrument version, and map its columns. Only the five EQ-5D
+    the instrument version, and select its variables ("Confirm
+    variables"). Only the five EQ-5D
     dimensions are required; a timepoint, patient ID, group, EQ VAS score,
     age, sex and an existing EQ-5D value column are each optional and each
     unlock further analyses.}
@@ -64,17 +65,22 @@ The app has seven pages, in the order the work is done:
     three decimal places throughout the app, but written at full precision.}
   \item{Analysis}{All the analysis functions of Devlin et al. (2020), in
     one place. Pick a component (EQ-5D profiles, EQ-5D values or EQ VAS),
-    then an output, then Run. An output whose columns are not mapped says
+    then an output, then Run -- or open "See catalogue of available
+    analyses", which lists, in one tab per component, only what the data
+    can support: a plain description of each and an example of its output
+    on the bundled example data, with "Select this". An output whose variables are not selected says
     what it needs rather than failing. The EQ-5D value analyses take a
     Utility column, offering every value column in the dataset; the chosen
     one is passed to the analysis as \code{name_utility} and nothing is
     recalculated.}
-  \item{Results}{Every analysis that has been run, with the
-    \code{eq5dsuite} code that produced it. Results are numbered and can be
-    reordered or removed; that order is the export order.}
-  \item{Export}{The results in the order set on the Results page, three
-    ways: a Word report, one section per result with its title and its table
-    or figure; an archive of CSV tables and PNG figures; and an R script
+  \item{Results and export}{Every analysis that has been run, numbered,
+    each with controls to move it up or down or remove it, its own
+    downloads (CSV for a table, PNG and PDF for a figure), and "View",
+    which shows the table or figure and the \code{eq5dsuite} code that
+    produced it. That order is the export order for all three exports: a
+    Word report, one section per result with its title and its table
+    or figure; an archive of CSV tables and PNG figures with a
+    \code{manifest.csv}; and an R script
     that repeats the whole session. The Word report uses the template
     bundled with the package and needs Pandoc, which ships with RStudio.
 

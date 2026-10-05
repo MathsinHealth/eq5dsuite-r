@@ -206,14 +206,15 @@
   # confirm numeric format
   df_eq5d <- df[, names, drop = FALSE]
 
-  x <- as.matrix(df_eq5d)
-  xorig <- x
-  x[,] <- as.integer(x)
   # A NULL version leaves the instrument unknown; keep the wider range, as
   # before, rather than discarding levels that may well be valid.
   n_levels <- if (!is.null(eq5d_version) && eq5d_version %in% c("3L", "Y3L")) 3L else 5L
-  x[!x %in% seq_len(n_levels)] <- NA
-  if(sum(is.na(as.vector(x)))>sum(is.na(as.vector(xorig)))) warning(paste0(sum(is.na(as.vector(x)))-sum(is.na(as.vector(xorig))), " observations were coerced to NAs as they were not interpretable as integer values in the range allowed by the EQ-5D descriptive system."))
+  # Validation happens on the values as supplied, not on as.integer() of them:
+  # the old order truncated 1.9 to 1, which then passed the range check and
+  # was analysed as level 1. .clean_dim_matrix() rejects fractional and
+  # non-finite values as well as out-of-range ones, and reports all of them in
+  # one warning. See R/validate_dims.R.
+  x <- .clean_dim_matrix(df_eq5d, max_level = n_levels, what = "observation")
   # Column-wise, not `df_eq5d[,] <- x`: the latter is a subscript error on a
   # zero-row data frame.
   for (k in seq_along(names)) df_eq5d[[k]] <- x[, k]
@@ -613,58 +614,67 @@
     data.frame(fu = df$fu, eq5d = d, value = df[[d]], stringsAsFactors = FALSE)
   }))
 
-  # complete case dataset: remove NA values
-  df_cc <- df_long[!is.na(df_long$value), , drop = FALSE]
+  # Every cell of dimension x follow-up x level is counted, including those
+  # nobody reported. Counting with aggregate() returned only the cells that
+  # occurred, so a level or a dimension with no problems came out as NA after
+  # widening, and so did the change in the number reporting problems: one
+  # respondent going from mo = 2 to mo = 1 gave NA and NA, not 0 and -1.
+  #
+  # The denominator is the number of non-missing responses on a dimension at
+  # a follow-up. Where it is positive every count is a number, 0 when nobody
+  # gave that response. Where it is zero -- nobody recorded at that follow-up,
+  # or everyone missing on that dimension -- the counts are NA: the data say
+  # nothing about how many had a problem, and a 0 there would read as
+  # everyone having recovered.
+  fu_levels    <- levels(df_long$fu)
+  level_values <- seq_len(if (eq5d_version == "5L") 5L else 3L)
+  df_cc <- df_long[!is.na(df_long$value) & !is.na(df_long$fu), , drop = FALSE]
+
+  count_by <- function(keep) {
+    tab <- table(factor(df_cc$eq5d[keep], levels = levels_eq5d),
+                 factor(df_cc$fu[keep], levels = fu_levels))
+    tab
+  }
+  denom <- count_by(rep(TRUE, nrow(df_cc)))
+  # Long data frame of one count per (eq5d, fu), NA where there is no
+  # denominator.
+  as_cells <- function(tab, level) {
+    n <- as.integer(tab)
+    d <- as.integer(denom)
+    n[d == 0] <- NA_integer_
+    data.frame(eq5d = rep(levels_eq5d, times = length(fu_levels)),
+               fu = rep(fu_levels, each = length(levels_eq5d)),
+               n = n, freq = ifelse(d > 0, n / d, NA_real_),
+               level = level, stringsAsFactors = FALSE)
+  }
 
   # summary: individual levels
-  summary_dim <- .summary_table_2_1(df = df_cc, group_by = c("eq5d", "value", "fu"))
-  names(summary_dim)[names(summary_dim) == "value"] <- "level"
-  summary_dim$level <- as.character(summary_dim$level)
+  summary_dim <- do.call(rbind, lapply(level_values, function(lv)
+    as_cells(count_by(df_cc$value == lv), as.character(lv))))
 
-  # summary: total
-  summary_total <- .summary_table_2_1(df = df_cc, group_by = c("eq5d", "fu"))
-  summary_total$level <- "Total"
+  # summary: total -- the denominator itself, 0 where there is none
+  summary_total <- as_cells(denom, "Total")
+  summary_total$n <- as.integer(denom)
+  summary_total$freq <- ifelse(summary_total$n > 0, 1, NA_real_)
 
-  # summary: some problems and change
-  #
-  # Nobody reporting a problem on any dimension -- everyone at 11111, or a
-  # single respondent in full health -- left this frame empty, and aggregate()
-  # then failed with "no rows to aggregate". That is ordinary data, so the
-  # counts are simply zero.
-  df_probs <- df_cc[df_cc$value != 1, , drop = FALSE]
-  if (nrow(df_probs) > 0L) {
-    summary_problems <- aggregate(rep(1L, nrow(df_probs)),
-                                  by = list(eq5d = df_probs$eq5d, fu = df_probs$fu),
-                                  FUN = sum)
-  } else {
-    summary_problems <- summary_total[, c("eq5d", "fu"), drop = FALSE]
-    summary_problems$x <- 0L
-  }
-  names(summary_problems)[names(summary_problems) == "x"] <- "n"
-  # merge with totals
-  summary_problems <- merge(summary_problems,
-                            summary_total[, c("eq5d", "fu", "n")],
-                            by = c("eq5d", "fu"), suffixes = c("", "_total"))
-  summary_problems$freq <- summary_problems$n / summary_problems$n_total
-  summary_problems$n_total <- NULL
-  suffix <- if (eq5d_version == "3L") "2+3" else "2+3+4+5"
-  summary_problems$level <- paste0("Number reporting any problems (levels ", suffix, ")")
+  # summary: some problems
+  suffix <- paste(level_values[-1L], collapse = "+")
+  summary_problems <- as_cells(
+    count_by(df_cc$value != 1),
+    paste0("Number reporting any problems (levels ", suffix, ")"))
 
-  # change in numbers reporting problems since previous time point
-  # sort by (eq5d, fu) with fu ordered by levels_fu
+  # change in numbers reporting problems since the previous follow-up, in
+  # the order of levels_fu. NA where either count is unavailable; the
+  # relative change is NA where the previous count is 0.
   sp_sub <- summary_problems[, c("eq5d", "fu", "n")]
-  sp_sub$fu_ord <- match(as.character(sp_sub$fu), as.character(levels_fu))
+  sp_sub$fu_ord <- match(sp_sub$fu, as.character(levels_fu))
   sp_sub <- sp_sub[order(sp_sub$eq5d, sp_sub$fu_ord), ]
   sp_sub$fu_ord <- NULL
-  # lag n within each eq5d group
   sp_split <- split(sp_sub, sp_sub$eq5d)
   change_list <- lapply(sp_split, function(g) {
-    g$n_prev <- c(NA_real_, head(g$n, -1))
-    g$n_change <- g$n - g$n_prev
-    g$freq <- g$n_change / g$n_prev
-    g$n <- g$n_change
-    g$n_prev <- NULL
-    g$n_change <- NULL
+    n_prev <- c(NA_real_, head(g$n, -1))
+    g$n <- g$n - n_prev
+    g$freq <- ifelse(!is.na(n_prev) & n_prev > 0, g$n / n_prev, NA_real_)
     g
   })
   summary_problems_change <- do.call(rbind, change_list)
@@ -758,6 +768,25 @@
 }
 
 
+# Which rows start a respondent's records, in rows sorted by respondent and
+# then follow-up: the first row, any row whose ID differs from the row
+# before, and every row with no ID. A record that cannot be attributed to
+# anyone cannot be paired with anything -- comparing IDs with `!=` gave NA
+# there, and an NA index in an assignment is skipped, so such a record used to
+# be paired with the previous respondent's last one.
+#
+# The PCHC analyses and eq5d_profile_dimension_change_table() both use this,
+# so they agree about which records form a pair: consecutive records of one
+# respondent, in follow-up order.
+.first_of_subject <- function(id) {
+  n <- length(id)
+  if (n == 0L) return(logical(0))
+  prev <- c(NA, id[-n])
+  out <- is.na(id) | is.na(prev) | id != prev
+  out[1L] <- TRUE
+  out
+}
+
 #' Wrapper to determine Paretian Classification of Health Change
 #' 
 #' This internal function determines Paretian Classification of Health Change (PCHC) for each combination of the variables specified in the `group_by` argument. 
@@ -771,7 +800,8 @@
 #'   together and in follow-up order. Rows that start a new respondent are
 #'   given a missing change score, so a respondent whose first record is not
 #'   the first follow-up is excluded rather than compared against the
-#'   preceding respondent.
+#'   preceding respondent. So are rows with no \code{id} and rows whose
+#'   \code{fu} is missing.
 #' @param level_fu_1 Value of the first (i.e. earliest) follow-up. Would normally be defined as levels_fu[1].
 #' @param add_noprobs Logical value indicating whether to include a separate classification for those without problems (default is FALSE)
 #' @return A data frame with PCHC value for each combination of the grouping variables. 
@@ -795,9 +825,7 @@
     stop("[.pchc] `df` must contain an `id` column identifying the respondent.",
          call. = FALSE)
 
-  n <- nrow(df)
-  first_of_subject <- if (n == 0L) logical(0) else
-    c(TRUE, df$id[-1] != df$id[-n])
+  first_of_subject <- .first_of_subject(df$id)
 
   # initialise positive, negative & zero difference counts
   df$better <- 0L
@@ -808,8 +836,13 @@
 
     # lag shift: previous row's value minus current (dplyr::lag equivalent)
     df[[dom_diff]] <- c(NA_real_, head(df[[dom]], -1)) - df[[dom]]
-    # baseline rows, and any row that starts a new respondent: diff is NA
-    df[[dom_diff]][df$fu == level_fu_1 | first_of_subject] <- NA_real_
+    # baseline rows, any row that starts a new respondent, and any row whose
+    # follow-up is not one of levels_fu (NA after .prep_fu()): diff is NA.
+    # The last were warned about as excluded, but still paired.
+    no_prev <- first_of_subject | is.na(df$fu) |
+      as.character(df$fu) == as.character(level_fu_1)
+    no_prev[is.na(no_prev)] <- TRUE
+    df[[dom_diff]][no_prev] <- NA_real_
 
     # accumulate improvement/worsening counts (NA propagates for baseline rows)
     df$better <- df$better + (df[[dom_diff]] > 0)
@@ -929,7 +962,9 @@
       `Missing (n)` = miss_n,
       `Total sample` = tot,
       # 0 / 0 is NaN; a level with no rows has no missing percentage.
-      `Missing (%)` = if (tot == 0L) NA_real_ else miss_n / tot,
+      # A percentage, 0 to 100, as its name says; it was a proportion
+      # (0.33 for one missing of three, review Q10).
+      `Missing (%)` = if (tot == 0L) NA_real_ else 100 * miss_n / tot,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )

@@ -122,8 +122,14 @@ value_columns <- function(rv) {
 #' One deparser for the "Show R code" panel and for the generated script, so
 #' the two cannot disagree. It quotes safely: a column named `It's a group`
 #' comes out as valid R, which the string-pasting it replaces did not.
-format_call <- function(fn_name, args) {
-  eq5dsuite:::.deparse_call(fn_name, args)
+#
+#' A result restricted to one group is shown as the restriction followed by the
+#' call on the restricted rows, which is what the script does.
+format_call <- function(fn_name, args, filter = NULL) {
+  if (is.null(filter)) return(eq5dsuite:::.deparse_call(fn_name, args))
+  args$df <- quote(analysis_subset)
+  paste0("analysis_subset <- ", eq5dsuite:::.filter_code(filter), "\n",
+         eq5dsuite:::.deparse_call(fn_name, args))
 }
 
 #' Save a result to rv$results
@@ -131,10 +137,21 @@ format_call <- function(fn_name, args) {
 #' arguments it was given and any preparation of the data frame. The generated
 #' script is built from these, never from assembled text, and because the
 #' record travels on the result it follows the user's reordering and removal.
+#'
+#' The id is what every control on the Results and export page is keyed by,
+#' so it must never repeat. It was the clock to the millisecond, which two
+#' results saved together could share; a counter now follows it.
+RESULT_IDS <- new.env(parent = emptyenv())
+RESULT_IDS$n <- 0L
+next_result_id <- function() {
+  RESULT_IDS$n <- RESULT_IDS$n + 1L
+  paste0("r", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", RESULT_IDS$n)
+}
+
 save_result <- function(rv, label, fn_call, result_type, data = NULL,
                         plot = NULL, call = NULL) {
   entry <- list(
-    id          = paste0("r", format(Sys.time(), "%Y%m%d%H%M%S%OS3")),
+    id          = gsub("[^A-Za-z0-9_]", "_", next_result_id()),
     timestamp   = Sys.time(),
     label       = label,
     fn_call     = fn_call,
@@ -161,6 +178,85 @@ record_step <- function(rv, kind, ..., replace = TRUE) {
   invisible(step)
 }
 
+# The values of the "Restrict to group" selector. A group's value is its
+# label behind a prefix, and "every group" has a value no label can produce.
+# The no-restriction choice used to be the value "All", the same value as a
+# group labelled "All", so choosing that group analysed every row.
+GROUP_FILTER_ALL <- "all"
+group_filter_value <- function(label) paste0("group:", label)
+# The label a selector value stands for, or NULL for no restriction.
+group_filter_label <- function(value) {
+  if (is.null(value) || length(value) != 1L || is.na(value) ||
+      !startsWith(value, "group:"))
+    return(NULL)
+  substring(value, nchar("group:") + 1L)
+}
+
+#' Start a new revision of the data
+#'
+#' Called when a dataset and its mapping are confirmed. Every saved result,
+#' calculated value column and value step was computed from the previous
+#' dataset or mapping, and the script would recalculate them against the new
+#' one, so they are cleared: a saved result and the generated script then
+#' always describe the same data. The load is recorded only here, not when a
+#' file is chosen, so choosing a file without confirming it changes nothing.
+#'
+#' @param load The load step, without its `kind`.
+#' @return The number of results and value columns cleared.
+start_revision <- function(rv, load, mapping) {
+  steps <- rv$steps %||% list()
+  cleared <- list(
+    results = length(rv$results %||% list()),
+    values  = length(Filter(function(s) identical(s$kind, "value"), steps)))
+  rv$results <- list()
+  rv$steps <- list(c(list(kind = "load"), load),
+                   list(kind = "map", mapping = mapping))
+  rv$processed_data <- NULL
+  next_revision(rv)
+  cleared
+}
+
+#' Move the data revision on
+#'
+#' Anything shown that was computed from the previous revision -- the result
+#' on the Analysis page -- watches this and clears itself.
+next_revision <- function(rv) {
+  rv$revision <- (shiny::isolate(rv$revision) %||% 0L) + 1L
+  invisible(rv$revision)
+}
+
+#' Whether a saved result used a value column
+uses_value_column <- function(result, column) {
+  a <- result$call$args
+  isTRUE(identical(a$name_utility, column))
+}
+
+#' Forget what was computed from a value column about to be overwritten
+#'
+#' The script calculates each value column once, from its latest step. A
+#' result saved from the column's earlier values could not be reproduced, so
+#' it goes, with the earlier step. Results that did not use the column stay.
+#'
+#' @return The number of results removed.
+replace_value_column <- function(rv, column) {
+  res <- rv$results %||% list()
+  used <- vapply(res, uses_value_column, logical(1L), column = column)
+  rv$results <- res[!used]
+  rv$steps <- Filter(function(s) !(identical(s$kind, "value") &&
+                                     identical(s$column, column)),
+                     rv$steps %||% list())
+  next_revision(rv)
+  sum(used)
+}
+
+#' A saved result by id, or NULL
+find_result <- function(results, id) {
+  if (is.null(id) || length(results) == 0L) return(NULL)
+  idx <- which(vapply(results, function(r) identical(r$id, id), logical(1L)))
+  if (length(idx) == 0L) return(NULL)
+  results[[idx[1L]]]
+}
+
 #' Position of a saved result, or NA
 result_index <- function(results, id) {
   if (is.null(id) || !length(results)) return(NA_integer_)
@@ -170,8 +266,8 @@ result_index <- function(results, id) {
 
 #' Move a saved result up (`by = -1`) or down (`by = 1`)
 #'
-#' The order lives in rv$results, which the Results page, the Export page and
-#' the Word report all read, so moving a result here moves it everywhere.
+#' The order lives in rv$results, which the Results and export page, every
+#' export and the R script read, so moving a result here moves it everywhere.
 move_result <- function(rv, id, by) {
   results <- rv$results
   i <- result_index(results, id)
@@ -460,11 +556,11 @@ analysis_guard <- function(rv, ns) {
   bslib::card(bslib::card_body(
     shiny::p(shiny::icon("circle-info"), " ",
              if (mapped)
-               "Your columns are mapped. Review the data checks on the
+               "Your variables are confirmed. Review the data checks on the
                 Validation page and press “Proceed” to continue."
              else
                "No data yet. Upload a file or load the example dataset, then
-                map the EQ-5D columns.",
+                select the EQ-5D variables.",
              class = "text-muted"),
     shiny::actionButton(
       ns(if (mapped) "goto_validation" else "goto_data"),

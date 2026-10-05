@@ -28,14 +28,14 @@ mod_validation_server <- function(id, rv) {
     output$sidebar <- shiny::renderUI({
       if (is.null(rv$mapping)) {
         return(shiny::tagList(
-          hint("Upload data and confirm the column mapping first."),
+          hint("Upload data and confirm its variables first."),
           shiny::actionButton(ns("goto_data"), "Go to Data",
                               class = "btn-primary w-100",
                               icon = shiny::icon("arrow-right"))
         ))
       }
       shiny::tagList(
-        shiny::tags$p("Mapping", class = "sidebar-label"),
+        shiny::tags$p("Variables", class = "sidebar-label"),
         shiny::uiOutput(ns("mapping_summary")),
         shiny::hr(),
         shiny::actionButton(ns("proceed"), "Proceed",
@@ -49,7 +49,7 @@ mod_validation_server <- function(id, rv) {
     output$main <- shiny::renderUI({
       if (is.null(rv$mapping)) {
         return(bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, hint(
-          "Nothing to check yet. Map your EQ-5D columns on the Data page and ",
+          "Nothing to check yet. Select your EQ-5D variables on the Data page and ",
           "the checks will appear here."))))
       }
       shiny::tagList(
@@ -70,26 +70,46 @@ mod_validation_server <- function(id, rv) {
     })
 
     # ── Render: validation messages ───────────────────────────────────────────
+    # Each finding is one short line. Where eq5d_validate() has more to say --
+    # the values found, the records affected, what a percentage is of -- a
+    # "See details" toggle reveals it on demand. The details come from the
+    # same checks the analyses use, and nothing here changes the data.
+    details <- shiny::reactive(attr(validation(), "details"))
+
     output$validation_msgs <- shiny::renderUI({
       v <- validation()
-      msgs <- lapply(seq_len(nrow(v)), function(i)
-        list(type = v$type[i], text = v$message[i]))
-      shiny::tagList(
-        lapply(msgs, function(msg) {
-          cls <- switch(msg$type,
-            ok      = "note note-ok",
-            warning = "note note-warning",
-            error   = "note note-error",
-            "note note-info"
-          )
-          icon <- switch(msg$type,
-            ok = "circle-check", warning = "triangle-exclamation",
-            error = "circle-exclamation", "circle-info"
-          )
-          shiny::div(class = cls, role = "alert",
-                     shiny::icon(icon), " ", msg$text)
-        })
-      )
+      d <- details()
+      shiny::tagList(lapply(seq_len(nrow(v)), function(i) {
+        cls <- switch(v$type[i],
+          ok      = "note note-ok",
+          warning = "note note-warning",
+          error   = "note note-error",
+          "note note-info"
+        )
+        icon <- switch(v$type[i],
+          ok = "circle-check", warning = "triangle-exclamation",
+          error = "circle-exclamation", "circle-info"
+        )
+        shiny::div(class = cls, role = "alert",
+                   shiny::icon(icon), " ", v$message[i],
+                   finding_details(ns, i, d[[i]]))
+      }))
+    })
+
+    # The tables behind each finding: long lists are searchable and paged.
+    shiny::observe({
+      d <- details()
+      for (i in seq_along(d)) local({
+        ii <- i
+        dd <- d[[ii]]
+        if (is.null(dd)) return()
+        if (!is.null(dd$summary) && nrow(dd$summary) > SMALL_TABLE_ROWS)
+          output[[paste0("det_", ii, "_summary")]] <-
+            DT::renderDT(details_table(dd$summary))
+        if (!is.null(dd$records))
+          output[[paste0("det_", ii, "_records")]] <-
+            DT::renderDT(details_table(dd$records))
+      })
     })
 
     # ── Render: mapping summary ───────────────────────────────────────────────
@@ -99,13 +119,13 @@ mod_validation_server <- function(id, rv) {
       items <- list(
         list("EQ-5D version", m$eq5d_version),
         list("Dimensions",    paste(m$names_eq5d, collapse = ", ")),
-        list("Timepoint",     m$name_fu       %||% "(not mapped)"),
-        list("Group",         m$name_groupvar %||% "(not mapped)"),
-        list("Patient ID",    m$name_id       %||% "(not mapped)"),
-        list("EQ VAS",        m$name_vas      %||% "(not mapped)"),
-        list("Age",           m$name_age      %||% "(not mapped)"),
-        list("Sex",           m$name_sex      %||% "(not mapped)"),
-        list("EQ-5D value",   m$name_utility  %||% "(not mapped)")
+        list("Timepoint",     m$name_fu       %||% "(not selected)"),
+        list("Group",         m$name_groupvar %||% "(not selected)"),
+        list("Patient ID",    m$name_id       %||% "(not selected)"),
+        list("EQ VAS",        m$name_vas      %||% "(not selected)"),
+        list("Age",           m$name_age      %||% "(not selected)"),
+        list("Sex",           m$name_sex      %||% "(not selected)"),
+        list("EQ-5D value",   m$name_utility  %||% "(not selected)")
       )
       shiny::tags$dl(
         class = "map-summary",
@@ -163,6 +183,7 @@ mod_validation_server <- function(id, rv) {
       # Only set from raw mapping if processed_data not yet initialised.
       if (is.null(rv$processed_data)) {
         rv$processed_data <- preview_data()
+        next_revision(rv)
       }
       shiny::showNotification(
         "Dataset validated.", type = "message", duration = 3
@@ -174,3 +195,50 @@ mod_validation_server <- function(id, rv) {
     })
   })
 }
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+# Up to this many rows a summary is a plain table; beyond it, a paged one.
+SMALL_TABLE_ROWS <- 12L
+
+# The "See details" part of one finding, collapsed until asked for.
+finding_details <- function(ns, i, d) {
+  if (is.null(d)) return(NULL)
+  shiny::tags$details(
+    class = "finding-details",
+    shiny::tags$summary("See details"),
+    if (length(d$emphasis))
+      lapply(d$emphasis, function(x) shiny::p(shiny::strong(x))),
+    lapply(d$notes, shiny::p),
+    if (!is.null(d$denominator))
+      shiny::p(class = "hint", d$denominator),
+    if (!is.null(d$summary)) {
+      if (nrow(d$summary) > SMALL_TABLE_ROWS)
+        DT::DTOutput(ns(paste0("det_", i, "_summary")))
+      else small_table(d$summary)
+    },
+    if (!is.null(d$records)) shiny::tagList(
+      shiny::p(class = "details-label",
+               sprintf("Records affected (%s)",
+                       format(nrow(d$records), big.mark = ","))),
+      DT::DTOutput(ns(paste0("det_", i, "_records"))))
+  )
+}
+
+# A short table as plain HTML.
+small_table <- function(df) {
+  shiny::tags$table(
+    class = "table table-sm details-table",
+    shiny::tags$thead(shiny::tags$tr(lapply(names(df), shiny::tags$th))),
+    shiny::tags$tbody(lapply(seq_len(nrow(df)), function(r)
+      shiny::tags$tr(lapply(df[r, , drop = TRUE], function(x)
+        shiny::tags$td(format(x, big.mark = ",")))))))
+}
+
+# A long table: searchable and paged.
+details_table <- function(df) {
+  DT::datatable(df, rownames = FALSE, class = "table-sm table-striped",
+                options = list(pageLength = 10L, scrollX = TRUE,
+                               dom = "ftip"))
+}
+

@@ -22,6 +22,7 @@ DCE
 Ddims
 devlin
 df
+DM
 doi
 Dolan
 dropdowns
@@ -41,10 +42,13 @@ Estévez
 EuroQol
 EuroQol's
 FD
+Fraunces
 ggplot
+Gini
 gridlines
 groupvar
 H'max
+Herdman
 Hernández
 Hout
 HPG
@@ -71,6 +75,7 @@ nginx
 NICE's
 NL
 noprobs
+OHE
 Ohiri
 op's
 ORCID
@@ -78,13 +83,16 @@ Pandoc
 pchc
 PCHC
 PharmacoEconomics
+PMG
 PROMs
 pstate
 Pudney
 Purba
 R's
+rappdirs
 rda
 README's
+readxl
 Rivero
 Roudijk
 Rowen
@@ -95,10 +103,12 @@ sc
 shannon
 shinyapps
 ShinyProxy
+SIL
 stata
 Stata
 Stata's
 stderr
+testthat
 TG
 Thakkinstian
 Thavorncharoensap
@@ -117,3 +127,4 @@ xwr
 Youngkong
 YS
 Yusuf
+Zamora

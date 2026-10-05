@@ -66,10 +66,30 @@ uk_coverage <- function(df, vals, ages, male, mapping) {
   )
 }
 
-# The column name offered for each method, so switching method offers a name
-# that says what the column holds.
-default_value_col <- function(method, eq5d_version) {
-  if (identical(method, "uk")) uk_direction(eq5d_version)$col else "utility"
+# The column name offered for a method and value set, so the name says what
+# the column holds: utility_<METHOD>_<CODE>, where METHOD is left out for a
+# direct value set and is XW (crosswalk), XWR (reverse crosswalk) or DSU (the
+# NICE DSU UK mapping), and CODE is the code of the value set the values are
+# on -- the actual code, not its label. Before a value set is chosen the code
+# is left out.
+#
+#   direct, CA  -> utility_CA        xwr, CA -> utility_XWR_CA
+#   xw, DK      -> utility_XW_DK     uk      -> utility_DSU_GB
+suggest_value_col <- function(method, code = NULL) {
+  method <- method %||% "direct"
+  if (identical(method, "uk")) code <- "GB"   # the UK value set it maps onto
+  tag <- switch(method, xw = "XW", xwr = "XWR", uk = "DSU", NULL)
+  code <- if (length(code) == 1L && !is.na(code) && nzchar(code))
+    gsub("[^A-Za-z0-9_]", "_", code)
+  paste(c("utility", tag, code), collapse = "_")
+}
+
+# Whether a name the user is about to use is free, an existing value column
+# (which may be replaced) or another column of the data (which may not).
+value_col_clash <- function(name, rv) {
+  df <- rv$processed_data %||% rv$raw_data
+  if (is.null(df) || !nzchar(name) || !name %in% names(df)) return("free")
+  if (name %in% value_columns(rv)) "value column" else "data column"
 }
 
 # ── UI ────────────────────────────────────────────────────────────────────────
@@ -105,7 +125,7 @@ mod_values_server <- function(id, rv) {
     output$controls <- shiny::renderUI({
       if (is.null(rv$mapping)) {
         return(shiny::tagList(
-          hint("Map your EQ-5D columns first."),
+          hint("Select your EQ-5D variables first."),
           shiny::actionButton(ns("goto_data"), "Go to Data",
                               class = "btn-primary w-100",
                               icon = shiny::icon("arrow-right"))
@@ -122,8 +142,8 @@ mod_values_server <- function(id, rv) {
                            selected = method),
         shiny::uiOutput(ns("method_opts")),
         shiny::textInput(ns("col_name"), "New column name",
-                         value = keep$col_name %||%
-                           default_value_col(method, version())),
+                         value = keep$col_name %||% suggested()),
+        shiny::uiOutput(ns("name_note")),
         shiny::actionButton(ns("add"), "Add value column",
                             class = "btn-primary w-100",
                             icon = shiny::icon("plus")),
@@ -138,7 +158,15 @@ mod_values_server <- function(id, rv) {
                    "anything but the health state."),
           shiny::p("The ", shiny::strong("NICE DSU UK mapping"), " is for the ",
                    "UK only and does depend on the respondent's age and sex, ",
-                   "so it asks for those columns.")
+                   "so it asks for those columns."),
+          shiny::p(shiny::strong("Column names."), " The name offered is ",
+                   shiny::code("utility_"), ", then the method -- ",
+                   shiny::code("XW"), ", ", shiny::code("XWR"), " or ",
+                   shiny::code("DSU"), ", nothing for a direct value set -- ",
+                   "then the code of the value set the values are on: ",
+                   shiny::code("utility_CA"), ", ", shiny::code("utility_XWR_CA"),
+                   ", ", shiny::code("utility_DSU_GB"), ". Type your own and ",
+                   "it is kept.")
         )
       )
     })
@@ -167,16 +195,42 @@ mod_values_server <- function(id, rv) {
         selected = if (keep) prev else "")
     })
 
-    # Offer a column name that matches the method, unless the user has typed
-    # one of their own.
-    shiny::observeEvent(input$method, {
-      known <- c("utility", "eq5d_uk_3L", "eq5d_uk_5L")
+    # Offer a column name that says what the column will hold, and keep it in
+    # step with the method and value set -- unless the user has typed a name
+    # of their own, which is kept. A name counts as theirs when it is not the
+    # last one offered; clearing the field hands it back.
+    suggested <- shiny::reactive(
+      suggest_value_col(input$method,
+                        if (!identical(input$method, "uk")) input$country))
+    last_offered <- shiny::reactiveVal(NULL)
+    shiny::observe({
+      new <- suggested()
       cur <- shiny::isolate(input$col_name) %||% ""
-      if (cur %in% known || !nzchar(cur)) {
-        shiny::updateTextInput(session, "col_name",
-                               value = default_value_col(input$method, version()))
-      }
-    }, ignoreInit = TRUE)
+      prev <- shiny::isolate(last_offered())
+      if (!nzchar(trimws(cur)) || identical(cur, prev) ||
+          (is.null(prev) && grepl("^utility", cur)))
+        shiny::updateTextInput(session, "col_name", value = new)
+      last_offered(new)
+    })
+
+    # Say what adding under this name will do to an existing column.
+    output$name_note <- shiny::renderUI({
+      name <- trimws(input$col_name %||% "")
+      switch(value_col_clash(name, rv),
+        "value column" = {
+          n <- sum(vapply(rv$results %||% list(), uses_value_column,
+                          logical(1L), column = name))
+          note("warning", paste0(
+            "A value column named \"", name, "\" already exists. Adding ",
+            "replaces it",
+            if (n > 0L) sprintf(" and removes the %d saved result%s that used it",
+                                n, if (n == 1L) "" else "s"),
+            "."))
+        },
+        "data column" = note("error", paste0(
+          "\"", name, "\" is a column of your data. Choose another name.")),
+        NULL)
+    })
 
     # ── Age handling for the UK mapping ──────────────────────────────────────
     ages <- shiny::reactive({
@@ -185,7 +239,7 @@ mod_values_server <- function(id, rv) {
       if (!nzchar(input$age_col)) return(NULL)
       x <- df[[input$age_col]]
       if (identical(input$age_kind, "exact")) {
-        list(value = suppressWarnings(as.numeric(as.character(x))),
+        list(value = eq5dsuite:::.parse_number(x),
              is_banded = FALSE, straddles = rep(FALSE, length(x)))
       } else {
         mid <- eq5dsuite:::eq5d_age_band_midpoint(x)
@@ -215,7 +269,7 @@ mod_values_server <- function(id, rv) {
     output$main <- shiny::renderUI({
       if (is.null(rv$mapping)) {
         return(bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, hint(
-          "No columns mapped yet. Once the EQ-5D dimensions are mapped on the ",
+          "No variables selected yet. Once the EQ-5D dimensions are selected on the ",
           "Data page, you can value them here."))))
       }
       shiny::tagList(
@@ -248,10 +302,12 @@ mod_values_server <- function(id, rv) {
             "state.")),
           if (identical(v, "5L"))
             note("warning",
-                 "NICE now recommends valuing EQ-5D-5L data directly with the
-                  UK EQ-5D-5L value set — choose Direct and value set GB.
-                  This mapping is for evaluations begun under NICE's previous
-                  methods, and for reproducing earlier analyses.")
+                 "Since NICE's interim methods statement of 27 August 2026
+                  (PMG51), EQ-5D-5L data are valued directly with the UK
+                  EQ-5D-5L value set — choose Direct and value set GB. This
+                  mapping is for topics started before that date, for which
+                  NICE says 5L data should still be mapped to 3L utility
+                  values, and for reproducing earlier analyses.")
         ))
       }
       lbl <- switch(input$method %||% "direct",
@@ -455,11 +511,16 @@ mod_values_server <- function(id, rv) {
 
       df <- rv$processed_data %||%
     eq5dsuite:::eq5d_apply_mapping(rv$raw_data, rv$mapping)
-      if (col_name %in% names(df)) {
+      # Only a value column may be replaced. Any other column is data -- a
+      # dimension, the EQ VAS, an ID -- and used to be overwritten silently.
+      if (identical(value_col_clash(col_name, rv), "data column")) {
         shiny::showNotification(
-          paste0('Column "', col_name, '" already existed and was replaced.'),
-          type = "warning", duration = 4)
+          paste0('"', col_name, '" is a column of your data and cannot be ',
+                 "replaced. Choose another name."),
+          type = "error", duration = 8)
+        return()
       }
+      replacing <- col_name %in% names(df)
 
       tryCatch({
         if (uk) {
@@ -478,6 +539,19 @@ mod_values_server <- function(id, rv) {
         }
         df[[col_name]] <- vals
 
+        # Results saved from the column's previous values cannot be
+        # reproduced once it is overwritten; see replace_value_column().
+        dropped <- if (replacing) replace_value_column(rv, col_name) else 0L
+        if (replacing)
+          shiny::showNotification(
+            paste0('Column "', col_name, '" already existed and was replaced',
+                   if (dropped > 0L)
+                     sprintf("; %d saved result%s that used it %s removed",
+                             dropped, if (dropped == 1L) "" else "s",
+                             if (dropped == 1L) "was" else "were"),
+                   "."),
+            type = "warning", duration = 8)
+
         new_mapping <- rv$mapping
         new_mapping$name_utility <- col_name
         if (!uk) new_mapping$country <- input$country
@@ -493,7 +567,16 @@ mod_values_server <- function(id, rv) {
                       fn = d$fn, from = d$from, to = d$to, column = col_name,
                       age_col = input$age_col, sex_col = input$sex_col,
                       male_value = input$male_value,
-                      banded = isTRUE(a$is_banded))
+                      banded = isTRUE(a$is_banded),
+                      # The label -> age table the app actually used, so the
+                      # generated script reproduces it exactly instead of
+                      # parsing the labels a second time.
+                      age_lookup = if (isTRUE(a$is_banded)) {
+                        lab <- as.character(rv$processed_data[[input$age_col]])
+                        keep <- !is.na(lab) & !is.na(a$value)
+                        stats::setNames(a$value[keep], lab[keep])[
+                          !duplicated(lab[keep])]
+                      })
         } else {
           record_step(rv, "value", replace = FALSE, method = input$method,
                       method_label = names(get_utility_method_choices(

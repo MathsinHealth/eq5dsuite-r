@@ -7,27 +7,29 @@
 eq5d_profile_health_profile_grid(
   df,
   names_eq5d,
-  name_utility = NULL,
   name_fu,
   levels_fu = NULL,
-  name_id
+  name_id,
+  eq5d_version,
+  country
 )
 }
 \arguments{
-\item{df}{A data frame containing EQ-5D columns, a value column, an ID column, and a follow-up column}
+\item{df}{A data frame containing EQ-5D columns, an ID column and a follow-up column}
 
 \item{names_eq5d}{A character vector of EQ-5D dimension names}
-
-\item{name_utility}{Character string naming the column of pre-calculated
-EQ-5D values. If \code{NULL} (default), the column \code{"utility"} is
-used. The values are used to rank the observed health states; see
-\code{\link{eq5d}} for calculating them from the dimensions.}
 
 \item{name_fu}{A character string for the follow-up column}
 
 \item{levels_fu}{A character vector of length 2, specifying the order of the follow-up levels (e.g., c("Pre-op","Post-op"))}
 
 \item{name_id}{A character string for the patient ID column}
+
+\item{eq5d_version}{Version of the EQ-5D instrument: "3L", "5L" or "Y3L".
+It decides how many states are ranked.}
+
+\item{country}{Value set code used to rank the states; see
+\code{\link{eqvs_display}} for the codes available.}
 }
 \value{
 A list with components:
@@ -41,29 +43,27 @@ points. A diagonal reference line indicates no change; points above the line ref
 improvement, and points below indicate deterioration.
 }
 \details{
-The ranking is over the health states that occur in \code{df}, ordered by
-the values in \code{name_utility}: the best observed state is rank 1 and
-the worst is rank \emph{n}, where \emph{n} is the number of distinct
-states observed. Earlier versions of this function valued every state the
-instrument allows and ranked over all of them -- 243 for the EQ-5D-3L,
-3,125 for the 5L -- which needed a value set rather than a column of
-values. The order of the plotted points is the same either way; the rank
-numbers and the axis limits are not.
+The ranking is over \strong{every health state the instrument allows}, not
+only those the data contain: all 243 states for the EQ-5D-3L and the
+EQ-5D-Y-3L, and all 3,125 for the EQ-5D-5L. Each is valued with the value
+set named by \code{country} and \code{eq5d_version}, and ordered best to
+worst, so the best possible state is rank 1 and the worst is rank 243 or
+3,125. A rank therefore means the same thing in every dataset valued with
+the same value set, and the axes span the whole classification system
+rather than the part of it a particular sample happens to occupy.
 
-Where one state carries more than one value -- which happens when the
-values depend on something besides the state, as in the NICE DSU mapping,
-where they depend on age and sex -- the state is ranked by its mean value,
-with a warning.
+This is why the function takes a value set rather than a column of
+pre-calculated values: the states that do \emph{not} occur in the data
+still have to be valued in order to place the states that do.
 }
 \examples{
-example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
-                             country = "GB")
 tmp <- eq5d_profile_health_profile_grid(
-           df = example_data, 
-           names_eq5d = c("mo", "sc", "ua", "pd", "ad"), 
-           name_utility = "value",
-           name_fu = "time", 
-           levels_fu = c("Pre-op", "Post-op"), 
-           name_id = "id"
+           df = example_data,
+           names_eq5d = c("mo", "sc", "ua", "pd", "ad"),
+           name_fu = "time",
+           levels_fu = c("Pre-op", "Post-op"),
+           name_id = "id",
+           eq5d_version = "3L",
+           country = "GB"
        )
 }

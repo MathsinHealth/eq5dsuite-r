@@ -10,16 +10,25 @@ eq5d_apply_mapping(df, mapping)
 \item{df}{A data frame of EQ-5D responses.}
 
 \item{mapping}{A named list describing the columns. Recognised entries:
-\describe{
-  \item{\code{names_eq5d}}{character vector of five dimension columns, in
-    the order mobility, self-care, usual activities, pain/discomfort,
-    anxiety/depression.}
-  \item{\code{name_fu}, \code{name_groupvar}, \code{name_id},
-    \code{name_vas}, \code{name_utility}}{single column names, or
-    \code{NULL} where there is none.}
-}
-Other entries, such as \code{eq5d_version} or \code{levels_fu}, are
-ignored here and used by the analysis functions.}
+  \describe{
+    \item{\code{names_eq5d}}{character vector of five dimension columns, in
+      the order mobility, self-care, usual activities, pain/discomfort,
+      anxiety/depression.}
+    \item{\code{name_fu}, \code{name_groupvar}, \code{name_id},
+      \code{name_vas}, \code{name_utility}}{single column names, or
+      \code{NULL} where there is none.}
+  }
+  \code{eq5d_version} (\code{"3L"}, \code{"5L"} or \code{"Y3L"}) sets
+  the levels a dimension may take, 1 to 3 or 1 to 5: any other value,
+  including a fractional one, becomes \code{NA}. When it is absent, any
+  whole number from 1 to 9 is kept.
+  Other entries, such as \code{levels_fu}, are
+  ignored here and used by the analysis functions.
+
+  The whole mapping is applied at once, so columns may swap names. A column
+  mapped to more than one role, or a target name that already belongs to a
+  column nobody mapped, is an error rather than a silently duplicated name.
+  Factor columns are read through their labels.}
 }
 \value{
 \code{df} with the mapped columns renamed and coerced. Columns not

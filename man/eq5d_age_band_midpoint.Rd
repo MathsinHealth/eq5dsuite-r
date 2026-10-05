@@ -31,7 +31,11 @@ distinction decides the band a respondent is mapped into: the DSU's age
 bands begin at 35, 45, 55 and 65, which are exactly those midpoints, so a
 band that straddles one of those boundaries is placed in the upper one.
 
-A band left open at the top, such as "65+", is treated as ten years wide.
+No midpoint is invented for a label that cannot identify a single band. A
+band open at the top, such as "65+", resolves to its lower bound, because
+every age in it falls in the same band; one open at the bottom, such as
+"under 20", or spanning a boundary, such as "50+", returns \code{NA} with a
+warning naming the label. Supply an exact age in that case.
 
 Using a midpoint makes the result an approximation. Where exact ages are
 available, use them.

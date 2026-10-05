@@ -31,6 +31,12 @@
 # Basename written by the current version, and the legacy basename carrying a
 # stray trailing dot that eqvs_add()/eqvs_drop() used to write (and that
 # .onLoad() never read back).
+#
+# On Windows the two are one file: the Win32 API drops a trailing dot, so
+# writing or reading "cache.Rdta." uses "cache.Rdta". A legacy cache there is
+# therefore simply found under the current name. That is why nothing here may
+# ever delete or rename the legacy name: on Windows it would be the current
+# cache.
 .cache_basename        <- "cache.Rdta"
 .cache_basename_legacy <- "cache.Rdta."
 
@@ -260,6 +266,29 @@
   if (!identical(nrow(x), as.integer(expected)))
     return(paste0(what, " has ", nrow(x), " rows (expected ", expected, ")."))
 
+  # The state universe, not just its size.
+  #
+  # Row count was the only structural check, so a cache whose rows had been
+  # reordered, or whose state keys had all been replaced by one value, passed
+  # and was applied. Reordering reversed custom crosswalk values, because the
+  # crosswalk multiplies by position; replacing the keys corrupted built-in
+  # scoring, because the combined table is built by joining on `state` and a
+  # degenerate key set collapses it.
+  canonical <- make_all_EQ_indexes(version = if (version == "5L") "5L" else "3L")
+  keys <- suppressWarnings(as.integer(x$state))
+  if (anyNA(keys))
+    return(paste0(what, " has ", sum(is.na(keys)),
+                  " state key(s) that are not health state codes."))
+  if (anyDuplicated(keys))
+    return(paste0(what, " repeats ", length(unique(keys[duplicated(keys)])),
+                  " state key(s); each state must appear exactly once."))
+  if (length(setdiff(keys, canonical)))
+    return(paste0(what, " holds ", length(setdiff(keys, canonical)),
+                  " state key(s) that are not EQ-5D-", version, " states."))
+  if (length(setdiff(canonical, keys)))
+    return(paste0(what, " is missing ", length(setdiff(canonical, keys)),
+                  " of the ", expected, " EQ-5D-", version, " states."))
+
   if (NCOL(x) > 1L) {
     value_cols <- colnames(x)[-1L]
     not_num <- value_cols[!vapply(x[value_cols], is.numeric, logical(1L))]
@@ -270,9 +299,32 @@
       return(paste0(what, " has duplicated value set code(s): ",
                     paste(unique(value_cols[duplicated(value_cols)]),
                           collapse = ", "), "."))
+    # A non-finite utility propagates through every score and every crosswalk
+    # as Inf or NaN rather than as a missing value.
+    bad_vals <- value_cols[vapply(x[value_cols], function(v)
+      any(!is.na(v) & !is.finite(v)), logical(1L))]
+    if (length(bad_vals))
+      return(paste0(what, " has non-finite value(s) in column(s): ",
+                    paste(bad_vals, collapse = ", "), "."))
   }
 
   character(0)
+}
+
+# Put an accepted user value set table into canonical state order.
+#
+# The crosswalk multiplies a value set by a probability matrix and so depends
+# on row order, and the direct lookup is positional. Both are safe once the
+# table is ordered by the canonical state vector, whatever order the cache
+# happened to hold.
+.canonicalise_uservsets <- function(x, version) {
+  if (is.null(x) || !is.data.frame(x) || !nrow(x)) return(x)
+  canonical <- make_all_EQ_indexes(version = if (version == "5L") "5L" else "3L")
+  ord <- match(canonical, suppressWarnings(as.integer(x$state)))
+  if (anyNA(ord)) return(x)        # validation will already have rejected it
+  out <- x[ord, , drop = FALSE]
+  rownames(out) <- NULL
+  out
 }
 
 #' Check that uservsets* and user_defined_* agree on which codes exist
@@ -401,6 +453,11 @@
     uservsets <- get(uservsets_str, envir = tmp, inherits = FALSE)
     problem   <- .validate_uservsets(uservsets, version)
     if (length(problem)) return(reject(problem, schema))
+    # Accepted, so put it in canonical state order: the crosswalk multiplies
+    # by position and the direct lookup is positional, so a cache written in
+    # another order would otherwise give different values for the same set.
+    uservsets <- .canonicalise_uservsets(uservsets, version)
+    assign(uservsets_str, uservsets, envir = tmp)
 
     user_defined <- NULL
     if (has_meta) {
@@ -524,6 +581,26 @@
 #' Objects belonging to the user that are worth caching
 #' @keywords internal
 #' @noRd
+# The user's value set state, for restoring after a failed operation.
+#
+# eqvs_add() and eqvs_drop() change the runtime tables and then try to
+# persist them. A failed write used to leave the session changed and the file
+# on disk not, with no way to tell. Both now roll back, so "the operation
+# failed" means the same thing in memory as on disk.
+.vs_state_snapshot <- function(pkgenv) {
+  nms <- .cache_user_objects(pkgenv)
+  stats::setNames(
+    lapply(nms, function(n) get(n, envir = pkgenv, inherits = FALSE)), nms)
+}
+
+.vs_state_restore <- function(pkgenv, snap) {
+  for (n in setdiff(.cache_user_objects(pkgenv), names(snap)))
+    rm(list = n, envir = pkgenv)
+  for (n in names(snap)) assign(n, snap[[n]], envir = pkgenv)
+  suppressMessages(.fixPkgEnv(saveCache = FALSE))
+  invisible(NULL)
+}
+
 .cache_user_objects <- function(pkgenv) {
   nms <- c(paste0("uservsets", .cache_versions),
            paste0("user_defined_", .cache_versions))
@@ -554,14 +631,41 @@
     if (!dir.exists(target_dir))
       stop("the directory '", target_dir, "' does not exist and could not be created")
 
-    .backup_rejected_cache(pkgenv, filePath)
+    # A cache that was rejected on load is copied aside before it is
+    # replaced. If that copy is needed and does not succeed, nothing is
+    # written: the save used to go ahead, replacing the only copy of value
+    # sets that could not be read (review Q05).
+    if (.backup_required(pkgenv, filePath) &&
+        !isTRUE(.backup_rejected_cache(pkgenv, filePath)))
+      stop("the unreadable cache at '", filePath, "' could not be backed up, ",
+           "so it has not been replaced")
 
     tmpenv <- new.env(parent = emptyenv())
     for (nm in .cache_user_objects(pkgenv))
       assign(nm, get(nm, envir = pkgenv, inherits = FALSE), envir = tmpenv)
     assign("cache_schema_version", .cache_schema_version, envir = tmpenv)
 
-    save(list = ls(tmpenv, all.names = TRUE), envir = tmpenv, file = filePath)
+    # Written beside the target and moved onto it, so a write that fails
+    # part way through leaves the previous usable cache in place. save()
+    # straight to filePath truncated the old file first, and an interrupted
+    # or failing write destroyed value sets that were still fine.
+    tmpfile <- tempfile(paste0(basename(filePath), "."), tmpdir = target_dir)
+    on.exit(if (file.exists(tmpfile)) unlink(tmpfile), add = TRUE)
+    save(list = ls(tmpenv, all.names = TRUE), envir = tmpenv, file = tmpfile)
+    # Readable before it replaces anything: a file that cannot be loaded back
+    # is worse than no new file at all.
+    if (!file.exists(tmpfile))
+      stop("the cache could not be written to a temporary file in '",
+           target_dir, "'")
+    probe <- new.env(parent = emptyenv())
+    load(tmpfile, envir = probe)
+    if (!length(ls(probe, all.names = TRUE)))
+      stop("the cache written to a temporary file held nothing")
+    if (!file.rename(tmpfile, filePath)) {
+      # Same-directory rename, so this is a permissions or filesystem
+      # failure rather than a cross-device move.
+      stop("the new cache could not be moved into place at '", filePath, "'")
+    }
 
     # The cache on disk now matches the current schema.
     if (exists(".cache_migrated_from", envir = pkgenv, inherits = FALSE))
@@ -586,20 +690,38 @@
 #' @keywords internal
 #' @noRd
 .backup_rejected_cache <- function(pkgenv, filePath) {
-  if (!exists(".cache_rejected", envir = pkgenv, inherits = FALSE)) return(invisible(FALSE))
+  if (!.backup_required(pkgenv, filePath)) return(invisible(FALSE))
   rejected <- get(".cache_rejected", envir = pkgenv, inherits = FALSE)
-  if (!file.exists(filePath) || !file.exists(rejected$file)) return(invisible(FALSE))
 
-  same <- identical(normalizePath(filePath, mustWork = FALSE),
-                    normalizePath(rejected$file, mustWork = FALSE))
-  if (!same) return(invisible(FALSE))
-
-  backup <- paste0(filePath, ".bak-", rejected$schema, "-",
-                   format(Sys.Date(), "%Y%m%d"))
-  if (file.copy(rejected$file, backup, overwrite = TRUE)) {
+  # A name not already taken, so an earlier backup is never overwritten.
+  stem <- paste0(filePath, ".bak-", rejected$schema, "-",
+                 format(Sys.Date(), "%Y%m%d"))
+  backup <- stem
+  k <- 1L
+  while (file.exists(backup)) {
+    k <- k + 1L
+    backup <- paste0(stem, "-", k)
+  }
+  ok <- isTRUE(.copy_backup(rejected$file, backup)) && file.exists(backup) &&
+    identical(unname(file.size(backup)), unname(file.size(rejected$file)))
+  if (ok) {
     message("eq5dsuite: the unreadable cache was backed up to '", backup, "'.")
     rm(".cache_rejected", envir = pkgenv)
     return(invisible(TRUE))
   }
   invisible(FALSE)
 }
+
+# Whether the file about to be replaced is a cache that was rejected on load
+# and has not yet been backed up.
+.backup_required <- function(pkgenv, filePath) {
+  if (!exists(".cache_rejected", envir = pkgenv, inherits = FALSE)) return(FALSE)
+  rejected <- get(".cache_rejected", envir = pkgenv, inherits = FALSE)
+  if (!file.exists(filePath) || !file.exists(rejected$file)) return(FALSE)
+  identical(normalizePath(filePath, mustWork = FALSE),
+            normalizePath(rejected$file, mustWork = FALSE))
+}
+
+# The copy itself, never over an existing file. Separate so a test can make
+# it fail.
+.copy_backup <- function(from, to) file.copy(from, to, overwrite = FALSE)

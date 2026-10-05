@@ -17,19 +17,27 @@ nav_item <- function(icon, label, value, content) {
 ui <- bslib::page_navbar(
   id    = "main_nav",
   title = navbar_brand,
-  # The house style: a warm off-white ground, terracotta for the things you
-  # act on, a serif for headings. Colours sampled from the reference app.
+  # The house style, after the EQ-5D Aggregate Utility Transporter: a warm
+  # off-white ground, terracotta for the things you act on, DM Sans for text
+  # and Fraunces for headings. The typefaces are bundled in WWW/fonts and
+  # declared in styles.css, so nothing is fetched from a font service; these
+  # are plain family names, not bslib::font_google(), for that reason.
   theme = bslib::bs_theme(
     version      = 5,
     bg           = "#FAF8F5",
     fg           = "#3A3330",
     primary      = "#A87968",
     secondary    = "#7A9BB5",
-    base_font    = c("Nunito Sans", "Source Sans Pro", "Segoe UI",
-                     "system-ui", "-apple-system", "Helvetica Neue",
-                     "Arial", "sans-serif"),
-    heading_font = c("Georgia", "Iowan Old Style", "Palatino Linotype",
-                     "Book Antiqua", "Times New Roman", "serif")
+    base_font    = c("DM Sans", "system-ui", "-apple-system", "Segoe UI",
+                     "Helvetica Neue", "Arial", "sans-serif"),
+    heading_font = c("Fraunces", "Georgia", "Iowan Old Style",
+                     "Palatino Linotype", "Times New Roman", "serif"),
+    "font-size-base"     = "0.95rem",
+    "border-radius"      = "10px",
+    "border-radius-sm"   = "8px",
+    "border-radius-lg"   = "16px",
+    "border-color"       = "#ECE5DB",
+    "headings-font-weight" = 600
   ),
   # A light bar, not the dark one bslib gives a dark primary, and the page you
   # are on marked by a filled pill rather than an underline. bg/inverse are
@@ -53,13 +61,9 @@ ui <- bslib::page_navbar(
   nav_item("list-check", "Validation", "validation", mod_validation_ui("validation")),
   nav_item("calculator", "Calculate EQ-5D values", "values", mod_values_ui("values")),
   nav_item("chart-bar",  "Analysis",   "analysis",   mod_analysis_ui("analysis")),
-  nav_item("table-list", "Results",    "results",    mod_results_ui("results")),
-  nav_item("download",   "Export",     "export",     mod_export_ui("export")),
+  nav_item("table-list", "Results and export", "results", mod_export_ui("export")),
 
   bslib::nav_spacer(),
-  bslib::nav_item(
-    shiny::tags$a(class = "nav-ext",
-                  href = "https://github.com/MathsInHealth/eq5dsuite",
-                  target = "_blank", "eq5dsuite package")
-  )
+  # "eq5dsuite vX", and an icon when CRAN has a newer version.
+  bslib::nav_item(mod_version_ui("version"))
 )

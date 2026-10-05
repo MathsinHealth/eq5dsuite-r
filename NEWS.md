@@ -1,33 +1,86 @@
 
 # eq5dsuite 2.1.0
 
-### Analysis and reporting
+## Changes affecting existing analyses
 
-- **Breaking change:** EQ-5D value analyses now use a pre-calculated column specified by `name_utility`, rather than selecting a value set. This also applies to LSS, LFS and Health Profile Grid analyses that use values. The Health Profile Grid now ranks observed states and no longer takes `eq5d_version`.
-- Added `eq5d_profile_shannon()` for Shannon's index and evenness. 
-- EQ-5D value functions now return unnamed numeric vectors in input order. 
+- **Changed output:** `"Missing (%)"` in `eq5d_vas_summary()` and `eq5d_utility_summary()` now reports percentages from 0 to 100, rather than proportions from 0 to 1. For example, one missing observation among three is reported as `33.33`, rather than `0.33`. The denominator is the total number of rows at that timepoint; timepoints with no rows return `NA`. The app and exports use the same units. 
 
-### Value sets and mappings
+- **Changed output for invalid inputs:** fractional, non-finite and out-of-range dimension levels return `NA` with a warning, rather than being truncated or encoded as valid profiles. Fractional levels are not rounded. Valid records and their order are unchanged.
 
-- Added the Nigerian EQ-5D-5L value set (`NG`) and `eqxwr_UK()` for mapping 3L responses to 2026 UK 5L values. 
-- Renamed UK value set codes to `GB`, retaining `UK` as a deprecated alias.
-- Removed interactive value set selection and improved custom value set validation and caching. 
-- `eqvs_display(return_df = TRUE)` now returns without printing.
+- **Changed output for invalid health-state codes:** scoring functions and `toEQ5Ddims()` require finite, whole-number codes. For example, `11111.9` returns `NA` with a warning, rather than being scored as `11111`.
 
-### Shiny app
+- **Breaking change:** EQ-5D value analyses use a pre-calculated column specified by `name_utility`, rather than selecting a value set. This also applies to LSS and LFS analyses that use EQ-5D values. The Health Profile Grid retains `eq5d_version` and `country`, because it ranks all possible states using the selected value set.
 
-- **Bug fix:** the value set selector offered the data's own instrument's value sets for every method. A crosswalk values one instrument's responses with the *other* instrument's value set, so with EQ-5D-3L data the reverse crosswalk listed 41 EQ-5D-3L sets where it should have listed the 45 EQ-5D-5L ones -- and 22 of those 41 were refused by `eq5d()`. About half the value sets are published for both instruments, which is why the list looked right. The selector now follows the method's target instrument and names it, and a selection the new method cannot use is cleared rather than carried over.
-- Redesigned the app around the workflow. Integrated UK mapping into value calculation.
-- Added utility-column selection, timepoint ordering and Shannon's indices. 
-- Added result reordering and removal, Word reports using the supplied template, and reproducible R script exports.
+## Input validation
 
-### Deployment and maintenance
+- `eq5d_validate()` identifies fractional, non-finite and out-of-range dimension levels and counts rejected values as missing.
+- `eqxw_UK()` and `eqxwr_UK()` require finite ages. Non-finite ages return `NA` with a warning; no upper age limit has been introduced.
+- Ambiguous age-band labels such as `"under 20"`, `"<20"` and `"50+"` return `NA` with a warning requesting an exact age. `"65+"` resolves to 65, giving the same mapped value as its previous interpretation. Closed bands retain their midpoints, and bare numeric labels are interpreted as exact ages.
+- Dimension selections must identify distinct columns, including when names differ only in case. The UK mapping functions also accept validated column positions.
+- `eq5d_apply_mapping()` applies column assignments together, allowing dimension names to swap safely. Duplicate assignments and conflicts with existing column names are rejected.
+- Custom dimension names are supported consistently by the UK mapping functions. An unusable record no longer causes an otherwise valid vector of health states to be interpreted as aggregate values.
+- `make_dummies()` supports its documented matrix input.
 
-- Added online deployment support, with configurable upload limits, session cleanup and privacy notices, and `inst/shiny/DEPLOY.md` as a guide to deploying on Shiny Server.
-- Added internal helpers for reading, preparing, validating and formatting data, and for age bands. These support the app and are not part of the package's interface: `eq5dsuite::` lists the analysis functions and the value set tools, and nothing else. The app reaches the helpers through `eq5dsuite:::`, and `app.R` on a server is `eq5dsuite:::eq5d_app(online = TRUE)`.
-- The R script the app generates calls only the analysis functions, and writes reading, column renaming, the validation checks, the age-band midpoints and the display formatting out in full, so every step can be read and changed. A test runs the generated script and compares its value columns, results and formatted tables against the app's.
+
+## Value sets and cache management
+
+- Cached value sets must contain every expected health state exactly once, with no additional states or non-finite values. Accepted tables are placed in canonical state order, so row order does not affect scoring or crosswalk results.
+- Value set codes are checked without regard to case, preventing ambiguous duplicates.
+- Adding, removing and renaming user-defined value sets validates the operation before changing the registry. Failed saves restore the previous runtime state.
+- User-defined renames preserve direct and crosswalk values across saving and reloading. Built-in codes cannot be renamed at runtime; changes to these codes are distributed through package releases.
+- Cache files are written to a temporary file, checked for readability and then moved into place. Failed writes leave the previous cache intact.
+- An unreadable cache is replaced only after a successful backup. If the backup cannot be created, saving stops and the original file remains unchanged. Existing backups are not overwritten.
+- Published renames that conflict with an existing value set are reported in `migration_conflicts`. Both value sets are retained, and the rename remains pending.
+- If a rename succeeds but its migration record cannot be saved, the renamed values are retained and the update is reported as incomplete. Unrecorded renames are listed in `migrations_unrecorded`, and the last-check date remains unchanged. A subsequent check can record the completed rename without repeating it.
+- `update_value_sets()` distinguishes successful checks from download, validation, migration and installation failures through `checked`, `failed` and `install_failed`.
+- Failed or malformed migration downloads and unresolved rename conflicts leave the update incomplete. A successfully downloaded empty migration list is accepted.
+- The last-check date advances only after a complete, successful update check.
+- Loading the package no longer creates the cache directory. The directory is created when data are first written.
+- Redirecting the package cache also redirects its last-check and migration records.
+
+## Analysis and reporting
+
+- Change tables compare consecutive observations from the same respondent, in timepoint order. Records without an ID or outside `levels_fu` are excluded from pairing. Dimension-change and PCHC analyses follow the same pairing rules.
+- Level summaries include every level of the selected instrument. An unreported level or problem has a count of zero when a denominator exists; `NA` indicates that no denominator is available. Relative change remains `NA` when the earlier count is zero.
+- `eq5d_profile_change_summary()` passes supplied argument values consistently when called from another function. Grouped level summaries retain the appropriate change rows when some categories are absent.
+- The Health Profile Grid supports custom dimension names and EQ-5D-Y-3L. It requires exactly two timepoints and explains when no respondent has a valid profile at both. Invalid profiles are excluded with a warning.
+- Health Profile Grid axis labels correspond to the timepoints plotted. Points, classification colours and the diagonal are unchanged.
+- `make_all_EQ_states()` and `make_all_EQ_indexes()` accept `"Y3L"`, using the same 243 states as EQ-5D-3L.
+- **Documentation correction:** the Health State Density Index description follows Zamora et al. (2018). The index is twice the area under the density curve: it equals 1 when observed profiles are equally frequent and decreases as their frequencies become more concentrated. Only observed profiles contribute to the calculation. For $S$ observed profiles and $N$ observations, the attainable range is $1/S + (S - 1)/N$ to 1. **The calculation and existing results are unchanged.** Interpretations based on the previous description should be reviewed.
+- Added `eq5d_profile_shannon()` for Shannon’s index and evenness.
+- EQ-5D value functions return unnamed numeric vectors in input order.
+
+## Value sets and mappings
+
+- Added the Nigerian EQ-5D-5L value set (`NG`).
+- Added `eqxwr_UK()` for mapping EQ-5D-3L responses to the 2026 UK EQ-5D-5L value set.
+- UK value set codes use `GB`, with `UK` retained as a deprecated alias.
+- Documentation dates and distinguishes NICE’s recommendations for topics started before and after its interim methods statement, *Implementing the EQ-5D-5L value set* (PMG51, 27 August 2026). The reference title and vignette citation details have also been updated. These documentation changes do not alter calculated values.
+- Removed interactive value set selection and strengthened custom value set validation.
+- `eqvs_display(return_df = TRUE)` returns the requested data frame without printing it.
+
+## Shiny app
+
+- Updated the visual style, with bundled fonts for offline use.
+- Combined Results and Export into one page, with result previews, reordering, removal and individual downloads.
+- Added an analysis catalogue with descriptions and example outputs, organised by EQ-5D profiles, EQ-5D values and EQ VAS.
+- Analysis availability and the Run button reflect the data, selected timepoints and analysis options.
+- Added detailed validation messages identifying affected values and records.
+- Renamed column-selection controls to “Variables” and added suggested utility-column names based on the method and value set.
+- Added the installed version and a notification when a newer version is available on CRAN.
+- Results clear when their underlying data change. Generated scripts preserve input handling, group restrictions and result order.
+- Value set selections follow the scoring method’s target instrument. Download filenames distinguish repeated analyses, and bulk archives include a results manifest.
+
+## Deployment and maintenance
+
+- The package declares `R (>= 4.1.0)`, matching its dependency requirements.
+- Replaced deprecated `.Names` arguments with `names` in `toEQ5Ddims()` and `make_all_EQ_states()`. Returned values and attributes are unchanged.
+- Added a GitHub Actions workflow for package checks across Linux, Windows and macOS, covering current, development and previous R releases and R 4.1.
+- Added online deployment support, configurable upload limits, session cleanup and a Shiny Server deployment guide at `inst/shiny/DEPLOY.md`.
+- Privacy notices explain that uploads and generated reports use temporary server files that are removed when the session ends. The deployment guide distinguishes private temporary directories from memory-backed storage.
+- Internal data-reading, validation, age-band and formatting helpers support consistent behaviour between the app and generated scripts.
 - Expanded tests and documentation.
--  Removed `providercode` from `example_data`.
+- Removed `providercode` from `example_data`.
 
 ---
 

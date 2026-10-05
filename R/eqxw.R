@@ -39,11 +39,16 @@ eqxw <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"))
 #'   published by the NICE Decision Support Unit (Hernández Alava et al. 2023).
 #'
 #' @details
-#' Under NICE's current methods (NICE 2026), EQ-5D-5L data collected in a study
-#' should be valued directly with the UK EQ-5D-5L value set, that is
-#' \code{eq5d5l(x, country = "GB")}. \code{eqxw_UK()} remains available for
-#' evaluations begun under NICE's previous methods and for reproducing earlier
-#' analyses.
+#' NICE's interim methods statement of 27 August 2026 (NICE 2026, PMG51) makes
+#' the UK EQ-5D-5L value set the reference case: EQ-5D-5L data collected in a
+#' study should be valued directly with it, that is
+#' \code{eq5d5l(x, country = "GB")}. The statement applies to topics started
+#' after it was published -- for technology appraisals, those whose invitation
+#' to participate was issued after that date. For topics started before it,
+#' NICE says EQ-5D-5L data should continue to be mapped to EQ-5D-3L utility
+#' values, which is what \code{eqxw_UK()} does; it also reproduces earlier
+#' analyses. (Checked against the statement on 4 October 2026; NICE's methods
+#' manuals PMG36 and PMG20 are to be updated to match it.)
 #'
 #' The mapping is age- and sex-specific. It is not the crosswalk of van Hout et
 #' al. (2012) implemented in \code{\link{eqxw}}, and it is not the reverse
@@ -107,7 +112,8 @@ eqxw <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"))
 #' \emph{Value in Health} 29(5):858-869. \doi{10.1016/j.jval.2026.03.008}
 #'
 #' National Institute for Health and Care Excellence (2026). Interim methods
-#' statement on the use of EQ-5D-5L data.
+#' statement: implementing the EQ-5D-5L value set (PMG51). Published 27 August
+#' 2026. \url{https://www.nice.org.uk/process/pmg51}
 #' @source
 #' The mapping tables are taken from the publicly available commands for
 #' mapping between the EQ-5D-3L and the EQ-5D-5L published by the NICE

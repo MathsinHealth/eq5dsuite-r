@@ -34,16 +34,18 @@ Functions for calculating EQ-5D preference-based values:
   \item \code{\link{eqxwr_UK}} — UK mapping from EQ-5D-3L
     responses to values on the UK EQ-5D-5L value set
     (NICE Decision Support Unit; Hernández Alava et al.,
-    2023). This is the mapping NICE currently recommends
-    when only EQ-5D-3L data are available
+    2023). This is the mapping NICE's interim methods
+    statement of 27 August 2026 specifies when only
+    EQ-5D-3L data are available
   \item \code{\link{eqxw_UK}} — UK mapping in the opposite
     direction, from EQ-5D-5L responses to values on the UK
     EQ-5D-3L value set (Hernández Alava et al., 2023).
-    Under NICE's current methods, EQ-5D-5L data collected in
-    a study should instead be valued directly with
-    \code{eq5d5l(country = "GB")}; \code{eqxw_UK} remains
-    available for evaluations begun under the previous
-    methods and for reproducing earlier analyses
+    Under NICE's interim methods statement of 27 August
+    2026, EQ-5D-5L data collected in a study should instead
+    be valued directly with \code{eq5d5l(country = "GB")};
+    \code{eqxw_UK} remains for topics started before that
+    date, for which NICE says 5L data should still be mapped
+    to 3L utility values, and for reproducing earlier analyses
 }
 }
 
@@ -232,7 +234,9 @@ A UK value set for the EQ-5D-5L.
 \doi{10.1016/j.jval.2026.03.008}
 
 National Institute for Health and Care Excellence (2026).
-Interim methods statement on the use of EQ-5D-5L data.
+Interim methods statement: implementing the EQ-5D-5L value set
+(PMG51). Published 27 August 2026.
+\url{https://www.nice.org.uk/process/pmg51}
 }
 \seealso{
 Useful links:

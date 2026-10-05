@@ -1,6 +1,9 @@
 #' Convert EQ-5D dimension scores to a five-digit profile index
 #' @param x A data.frame, matrix, or named numeric vector of EQ-5D dimension
-#'   scores. Each dimension must contain integer values (typically 1–3 or 1–5).
+#'   scores. Each dimension must be a whole number from 1 to 9; a value that is
+#'   fractional, non-finite or outside that range is not encoded and returns
+#'   \code{NA} for its row, with a warning. Fractional values are not rounded.
+#'   Factor columns are read through their labels.
 #' @param dim.names Character vector of length 5 giving the dimension names, in
 #'   the conventional MO, SC, UA, PD, AD order.
 #' @param na.rm Logical. If \code{FALSE} (default), any \code{NA} in a row
@@ -25,11 +28,7 @@ toEQ5Dindex <- function(
 ) {
   
   # ── 1. Validate dim.names ─────────────────────────────────────────────────
-  if (length(dim.names) != 5L)
-    stop("'dim.names' must be a character vector of exactly 5 names.")
-  if (anyDuplicated(dim.names))
-    stop("'dim.names' contains duplicate entries: ",
-         paste(dim.names[duplicated(dim.names)], collapse = ", "), ".")
+  .check_dim_names(dim.names)
   
   msg <- function(...) if (!quiet) message(...)
   
@@ -61,8 +60,12 @@ toEQ5Dindex <- function(
       stop("Required dimension column(s) not found in 'x': ",
            paste(missing_cols, collapse = ", "), ".")
     
-    m <- as.matrix(x[, dim.names, drop = FALSE])
-    mode(m) <- "integer"
+    # Validate before encoding, not after. mode(m) <- "integer" truncated
+    # 1.9 to level 1, and a value of 11 carried into the dimension beside it:
+    # c(0, 11, 1, 1, 1) encoded as 11111 and scored as full health. See
+    # .clean_dim_matrix() in R/validate_dims.R. The instrument is not known
+    # here, so the bound is the digit bound the encoding itself requires.
+    m <- .clean_dim_matrix(x[, dim.names, drop = FALSE], max_level = NULL)
     
     # NA handling
     if (!na.rm && anyNA(m)) {
@@ -103,12 +106,18 @@ toEQ5Dindex <- function(
          paste(missing_names, collapse = ", "), ".")
   
   vals <- x[dim.names]
-  
+  # The same validation as the matrix branch, so a named vector and a
+  # one-row data frame of the same values cannot disagree.
+  st <- .dim_status(vals, max_level = NULL)
+  .warn_dim_values(st, max_level = NULL)
+  vals <- attr(st, "value")
+  vals[st %in% .DIM_REJECTED] <- NA_real_
+
   if (!na.rm && anyNA(vals))
     return(NA_integer_)
   
   if (na.rm) vals[is.na(vals)] <- 0L
-  as.integer(vals %*% weights)
+  as.integer(as.integer(vals) %*% weights)
 }
 
 #' @title toEQ5Ddims
@@ -121,20 +130,20 @@ toEQ5Dindex <- function(
 #' @export
 toEQ5Ddims <- function(x, dim.names = c("mo", "sc", "ua", "pd", "ad")) {
   if(!length(dim.names) == 5) stop("Argument dim.names not of length 5.")
-  # coerce to integer
-  x <- as.integer(x)
+  # Whole, finite codes only; a fractional one is NA, not truncated.
+  x <- .parse_states(x)
   # Remove items outside of bounds
   x[!regexpr("^[1-5]{5}$", x)==1] <- NA
   if(sum(is.na(x))) warning(paste0("Provided vector contained ", sum(is.na(x)), " items not conforming to 5-digit numbers with exclusively digits in the 1-5 range."))
-  as.data.frame(outer(X = x, Y = structure(.Data = 10^(4:0), .Names = dim.names), FUN = "%/%") %% 10)
+  as.data.frame(outer(X = x, Y = structure(.Data = 10^(4:0), names = dim.names), FUN = "%/%") %% 10)
 }
 
 #' @title make_all_EQ_states
 #' @description Make a data.frame with all health states defined by dimensions
-#' @param version Either "3L" or "5L", to signify whether 243 or 3125 states should be generated. Matching is case-insensitive.
+#' @param version "3L", "5L" or "Y3L", to signify whether 243 or 3125 states should be generated. The EQ-5D-Y-3L has the same 243 states as the EQ-5D-3L. Matching is case-insensitive.
 #' @param dim.names A vector of dimension names to be used as names for output columns.
 #' @param append_index Boolean to indicate whether a column of 5-digit EQ-5D health state indexes should be added to output.
-#' @return A data.frame with 5 columns and 243 (-3L) or 3125 (-5L) health states
+#' @return A data.frame with 5 columns and 243 (-3L, -Y-3L) or 3125 (-5L) health states
 #' @examples 
 #' make_all_EQ_states('3L')
 #' @export
@@ -147,17 +156,18 @@ make_all_EQ_states <- function(version = "5L", dim.names = c("mo", "sc", "ua", "
     }
   # The version was validated with toupper() but the branch below compared the
   # raw string, so make_all_EQ_states("5l") returned the 243 three-level states.
-  version <- .norm_version(version, allowed = c("3L", "5L"))
-  xout <- do.call(expand.grid, structure(rep(list(1:ifelse(version == "5L", 5, 3)), 5),.Names = dim.names[5:1]))[,5:1]
+  # The EQ-5D-Y-3L has the same 243 states as the EQ-5D-3L.
+  version <- .norm_version(version, allowed = c("3L", "5L", "Y3L"))
+  xout <- do.call(expand.grid, structure(rep(list(1:ifelse(version == "5L", 5, 3)), 5), names = dim.names[5:1]))[,5:1]
   if(append_index) xout$state <- toEQ5Dindex(xout, dim.names)
   xout
 }
 
 #' @title make_all_EQ_indexes
 #' @description Make a vector containing all 5-digit EQ-5D indexes for -3L or -5L version.
-#' @param version Either "3L" or "5L", to signify whether 243 or 3125 states should be generated. Matching is case-insensitive.
+#' @param version "3L", "5L" or "Y3L", to signify whether 243 or 3125 states should be generated. The EQ-5D-Y-3L has the same 243 states as the EQ-5D-3L. Matching is case-insensitive.
 #' @param dim.names A vector of dimension names to be used as names for output columns.
-#' @return A vector with 5-digit state indexes for all 243 (-3L) or 3125 (-5L) EQ-5D health states
+#' @return A vector with 5-digit state indexes for all 243 (-3L, -Y-3L) or 3125 (-5L) EQ-5D health states
 #' @examples 
 #' make_all_EQ_indexes('3L')
 #' @export
@@ -203,6 +213,11 @@ make_dummies <- function(df,
     stop("Argument dim.names not of length 5.")
   if (!length(dim(df) == 2)) 
     stop("Need to provide matrix or data.frame of 2 dimensions.")
+  # A matrix is documented as acceptable input, but the column extraction
+  # below uses df[[col]], which is data-frame extraction: on a matrix it
+  # raised "subscript out of bounds". Normalise once, here, so the rest of
+  # the function has one kind of object to work with.
+  if (is.matrix(df)) df <- as.data.frame(df, stringsAsFactors = FALSE)
   # The version was not checked at all, and the branch below compares against
   # "5L", so any other spelling -- including "5l" -- built three-level dummies.
   # On five-level data that indexed past the end of the design matrix and
@@ -390,14 +405,49 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
          call. = FALSE)
   }
 
-  if(thisName %in% colnames(pkgenv[[uservsets_str]])) {
-    warning(paste0("New country name already in user-defined ", eq5d_str, " value set list."))
+  # Case-insensitively, as the lookup is. Checking it case-sensitively here
+  # while .fixCountries() matches case-insensitively let REVIEW_A and
+  # review_a both be added, after which either lookup reported them as
+  # ambiguous and neither could be used -- and the error told the user to
+  # supply an exact code, which they already had.
+  existing <- colnames(pkgenv[[uservsets_str]])
+  dup <- existing[toupper(existing) == toupper(thisName)]
+  if (length(dup)) {
+    warning("Value set code '", thisName, "' is already used by the ",
+            "user-defined ", eq5d_str, " value set '", dup[1L], "'. ",
+            "Codes differing only in case cannot both be used, because ",
+            "value sets are looked up case-insensitively. Drop the existing ",
+            "set with eqvs_drop() first, or choose a different code.",
+            call. = FALSE)
     return(0)
   }
   
   if(any(is.na(df[,2]*-1.1))) stop("Non-numeric values in second column of df.")
-  
-  # No problems
+
+  # ── F13: everything that can fail is checked before anything is changed ──
+  #
+  # The save path used to be validated after the value table and the metadata
+  # had already been written into the package environment, so a bad path left
+  # the registry advertising a value set with no values behind it and the next
+  # lookup failed with "replacement has length zero".
+  path <- NULL
+  if (saveOption == 2) {
+    path <- pkgenv$cache_path
+    if (!dir.exists(path)) dir.create(path, recursive = TRUE)
+    if (!dir.exists(path))
+      stop("The cache directory '", path, "' could not be created.",
+           call. = FALSE)
+  } else if (saveOption == 3) {
+    if (is.null(savePath) || !nzchar(savePath))
+      stop("Option 3 requires a valid 'savePath'.")
+    if (!dir.exists(savePath))
+      stop("The specified 'savePath' does not exist.")
+    path <- savePath
+  }
+
+  # No problems. Snapshot first, so a failed persist can put the session
+  # back: "the add failed" should mean the same in memory as on disk.
+  .vs_snapshot <- .vs_state_snapshot(pkgenv)
   tmp <- pkgenv[[uservsets_str]]
   tmp[, thisName] <- df[, 2]
   assign(x = uservsets_str, value = tmp, envir = pkgenv)
@@ -421,31 +471,20 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
   rownames(tmp) <- NULL
   assign(x = user_defined_str, value = tmp, envir = pkgenv)
   
-  # Handle save options
-  if (saveOption == 2) {
-    path <- pkgenv$cache_path
-    if (!dir.exists(path)) {
-      dir.create(path, recursive = TRUE)
-    }
-  } else if (saveOption == 3) {
-    if (is.null(savePath) || !nzchar(savePath)) {
-      stop("Option 3 requires a valid 'savePath'.")
-    } else {
-      if (!dir.exists(savePath)) {
-        stop("The specified 'savePath' does not exist.")
-      } else {
-        path <- savePath
-      }
-    }
-  }
-  
+  # The path was validated before anything was changed, above.
   if(saveOption == 1){
     .fixPkgEnv(saveCache = FALSE)
   }
   if (saveOption == 2 || saveOption == 3) {
     filePath <- file.path(path, .cache_basename)
-    if (.fixPkgEnv(saveCache = TRUE, filePath = filePath))
+    if (.fixPkgEnv(saveCache = TRUE, filePath = filePath)) {
       message(paste0('Cache data saved to ', filePath))
+    } else {
+      .vs_state_restore(pkgenv, .vs_snapshot)
+      stop("The value set ", country, " could not be saved to '", filePath,
+           "', so it has not been added. Nothing has been changed.",
+           call. = FALSE)
+    }
   }
 
   message(paste("The value set", country, "was added."))
@@ -614,6 +653,27 @@ eqvs_drop <- function(country = NULL, version = "5L", saveOption = 1, savePath =
 
   if (confirmed) {
 
+    # F13: validate the save path before anything is removed. The removal
+    # used to happen first, so a bad path dropped the value set from the
+    # running session and then errored, leaving no way to tell that the
+    # session no longer matched the cache on disk.
+    path <- NULL
+    if (saveOption == 2) {
+      path <- pkgenv$cache_path
+      if (!dir.exists(path)) dir.create(path, recursive = TRUE)
+      if (!dir.exists(path))
+        stop("The cache directory '", path, "' could not be created.",
+             call. = FALSE)
+    } else if (saveOption == 3) {
+      if (is.null(savePath) || !nzchar(savePath))
+        stop("Option 3 requires a valid 'savePath'.")
+      if (!dir.exists(savePath))
+        stop("The specified 'savePath' does not exist.")
+      path <- savePath
+    }
+
+    .vs_snapshot <- .vs_state_snapshot(pkgenv)
+
     message('Removing ', country, ' from user-defined value sets.')
     
     # Remove from user-defined dataset
@@ -631,30 +691,21 @@ eqvs_drop <- function(country = NULL, version = "5L", saveOption = 1, savePath =
       assign(x = uservsets_str, value = tmp, envir = pkgenv)
     }
     
-    # Handle save options
-    if (saveOption == 2) {
-      path <- pkgenv$cache_path
-      if (!dir.exists(path)) {
-        dir.create(path, recursive = TRUE)
-      }
-    } else if (saveOption == 3) {
-      if (is.null(savePath) || !nzchar(savePath)) {
-        stop("Option 3 requires a valid 'savePath'.")
-      } else if (!dir.exists(savePath)) {
-        stop("The specified 'savePath' does not exist.")
-      } else {
-        path <- savePath
-      }
-    }
-    
+    # The path was validated before anything was removed, above.
     if (saveOption == 1) {
       .fixPkgEnv(saveCache = FALSE)
     }
     
     if (saveOption == 2 || saveOption == 3) {
       filePath <- file.path(path, .cache_basename)
-      if (.fixPkgEnv(saveCache = TRUE, filePath = filePath))
+      if (.fixPkgEnv(saveCache = TRUE, filePath = filePath)) {
         message(paste0('Cache data saved to ', filePath))
+      } else {
+        .vs_state_restore(pkgenv, .vs_snapshot)
+        stop("The value set ", country, " could not be removed from the cache ",
+             "at '", filePath, "', so it has not been removed. Nothing has ",
+             "been changed.", call. = FALSE)
+      }
     }
     message(paste("The value set", country, "was deleted."))
     return(invisible(TRUE))
@@ -806,8 +857,8 @@ eq5d <- function(x, country = NULL, version = '5L', dim.names = c("mo", "sc", "u
   version <- c('3L', '5L', 'Y3L', 'XW', 'XWR', 'XWR', 'XW', 'XWR', 'XWR')[match(version, valid_versions)]
   vers <- c('3L', '5L', 'Y3L', '3L', '5L')[match(version, c('3L', '5L', 'Y3L', 'XW', 'XWR'))]
   
-  if (length(dim.names) != 5) stop("Argument dim.names must be of length 5.")
-  
+  .check_dim_names(dim.names)
+
   if (is.matrix(x) || is.data.frame(x)) {
     if (is.null(colnames(x))) {
       message("No column names detected.")
@@ -843,7 +894,7 @@ eq5d <- function(x, country = NULL, version = '5L', dim.names = c("mo", "sc", "u
   
   # Validate and match states
   xorig <- x
-  x <- as.integer(x)
+  x <- .parse_states(x)
   pattern <- if (version %in% c('3L', 'Y3L', 'XWR')) "^[1-3]{5}$" else "^[1-5]{5}$"
   x[!grepl(pattern, x)] <- NA
   

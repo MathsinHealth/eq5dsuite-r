@@ -46,9 +46,12 @@ Map EQ-5D-3L health states, or mean EQ-5D-3L values, to EQ-5D
   al. 2023).
 }
 \details{
-This is the mapping NICE currently recommends when only EQ-5D-3L data are
-available (NICE 2026): the 3L responses are mapped so that they can be valued
-on the UK EQ-5D-5L value set, which is the reference case.
+This is the mapping NICE's interim methods statement of 27 August 2026
+(NICE 2026, PMG51) specifies when EQ-5D-5L data from a relevant study are
+not available and EQ-5D-3L data are used instead: the 3L responses are
+mapped to utility values on the UK EQ-5D-5L value set, the reference case
+for topics started after that date. (Checked against the statement on 4
+October 2026.)
 
 The mapping is age- and sex-specific. It is \strong{not} the reverse
 crosswalk of van Hout and Shaw (2021) implemented in \code{\link{eqxwr}},
@@ -107,7 +110,8 @@ Rowen D, Mukuria C, Bray N, et al. (2026). A UK value set for the EQ-5D-5L.
 \emph{Value in Health} 29(5):858-869. \doi{10.1016/j.jval.2026.03.008}
 
 National Institute for Health and Care Excellence (2026). Interim methods
-statement on the use of EQ-5D-5L data.
+statement: implementing the EQ-5D-5L value set (PMG51). Published 27 August
+2026. \url{https://www.nice.org.uk/process/pmg51}
 }
 \seealso{
 \code{\link{eqxw_UK}} for EQ-5D-5L to EQ-5D-3L, and

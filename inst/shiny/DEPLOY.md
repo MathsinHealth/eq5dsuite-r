@@ -222,9 +222,13 @@ user, `~shiny/.cache/R/eq5dsuite`. The app needs to read it, not write it.
 
 ## 5. Temporary files
 
-Everything the app writes goes into a `tempfile()` directory inside the
-session, deleted in `session$onSessionEnded()`. Nothing is written to the
-application directory, and no path is ever built from an uploaded file's name.
+Uploaded data do reach the disk, briefly. Shiny writes each uploaded file to
+an upload directory under `tempdir()` and removes it when the session ends.
+Everything the app itself writes -- the Word report, the archive -- goes into
+a `tempfile()` directory of the session's own, deleted in
+`session$onSessionEnded()`. Nothing is written to the application directory,
+and no path is ever built from an uploaded file's name. Do not describe the
+service as keeping data only in memory.
 
 That covers an orderly exit. A process killed outright leaves its directory
 behind, so clean up periodically. `/etc/cron.daily/eq5d-tmp`:
@@ -238,8 +242,8 @@ find /tmp -maxdepth 2 -name 'eq5d*' -mmin +720 -exec rm -rf {} + 2>/dev/null
 sudo chmod +x /etc/cron.daily/eq5d-tmp
 ```
 
-If `/tmp` is on disk and you would rather uploaded data never touched it, give
-the service memory-backed storage:
+To keep the service's temporary files apart from every other service, and
+discarded when it stops, give it a private `/tmp`:
 
 ```bash
 sudo systemctl edit shiny-server
@@ -250,10 +254,13 @@ sudo systemctl edit shiny-server
 PrivateTmp=true
 ```
 
-`PrivateTmp` also hides the app's temporary files from every other service on
-the machine. Note that it changes where the files are, so the cron job above
-becomes unnecessary — systemd discards the private `/tmp` when the service
-stops.
+A private `/tmp` is still on disk unless `/tmp` itself is memory-backed. If
+uploaded data must not reach the disk at all, also mount a memory-backed
+filesystem there -- for example `TemporaryFileSystem=/tmp:size=2G` in the
+same section (systemd 238 or later), sized for the largest uploads and
+reports you expect -- and remember that memory can still be swapped out. With
+`PrivateTmp`, the cron job above becomes unnecessary: systemd discards the
+private `/tmp` when the service stops.
 
 ---
 

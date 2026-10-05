@@ -20,9 +20,82 @@
 
 # ── Deparsing ─────────────────────────────────────────────────────────────────
 
-# One value, as R source. deparse() escapes quotes, backslashes and control
-# characters, and writes a vector as c(...).
-.deparse_arg <- function(x) paste(deparse(x, width.cutoff = 60L), collapse = "")
+#' A string as an R string literal that is valid everywhere
+#'
+#' The literal is plain ASCII: backslashes, both quote characters and control
+#' characters are escaped, and every character outside ASCII is written as
+#' \code{\\uXXXX} (or \code{\\UXXXXXXXX} beyond the Basic Multilingual
+#' Plane). \code{deparse()} gets the escaping of backslashes and quotes
+#' right but leaves non-ASCII characters as they are, and how those survive
+#' being written to a file and read back depends on the platform's encoding --
+#' on Windows before R 4.2 it is not UTF-8. An ASCII script parses the same
+#' everywhere, and \code{parse(text = .r_string(x))} gives back \code{x}.
+#'
+#' This is the one way the package writes a string into R code; the test
+#' suite uses it too, to put a file path into a generated script.
+#'
+#' @param x A single string; \code{NA} gives \code{NA_character_}.
+#' @return A single string.
+#' @keywords internal
+.r_string <- function(x) {
+  stopifnot(is.character(x) || is.factor(x), length(x) == 1L)
+  x <- as.character(x)
+  if (is.na(x)) return("NA_character_")
+  cp <- utf8ToInt(enc2utf8(x))
+  if (anyNA(cp)) stop("not valid UTF-8: ", sQuote(x), call. = FALSE)
+  out <- vapply(cp, function(c) {
+    if (c == 92L) "\\\\"                       # backslash
+    else if (c == 34L) "\\\""                   # double quote
+    else if (c == 10L) "\\n"
+    else if (c == 13L) "\\r"
+    else if (c == 9L)  "\\t"
+    else if (c < 32L || c == 127L) sprintf("\\x%02x", c)
+    else if (c < 128L) intToUtf8(c)
+    else if (c <= 0xFFFF) sprintf("\\u%04x", c)
+    else sprintf("\\U%08x", c)
+  }, character(1L))
+  paste0("\"", paste(out, collapse = ""), "\"")
+}
+
+# Any character outside ASCII in R source as an escape. Applied to what
+# deparse() writes for values other than plain strings, where such a
+# character can only stand inside a string literal.
+.ascii_escape <- function(code) {
+  cp <- utf8ToInt(enc2utf8(code))
+  if (all(cp < 128L)) return(code)
+  paste(vapply(cp, function(c)
+    if (c < 128L) intToUtf8(c)
+    else if (c <= 0xFFFF) sprintf("\\u%04x", c)
+    else sprintf("\\U%08x", c), character(1L)), collapse = "")
+}
+
+# One value, as R source. Strings go through .r_string(), so a quote, a
+# backslash or a non-ASCII character in a label, a column name or a file name
+# cannot break the script on any platform; other values through deparse(),
+# which writes a vector as c(...).
+.deparse_arg <- function(x) {
+  plain <- is.null(attributes(x)) ||
+    identical(names(attributes(x)), "names")
+  if (plain && (is.list(x) || (is.atomic(x) && !is.null(names(x))))) {
+    # Names are written as string literals -- "Hôpital" = 1 -- because
+    # deparse() writes a syntactic name bare, and a bare name cannot carry an
+    # escape.
+    nms <- if (is.null(names(x))) rep("", length(x)) else names(x)
+    items <- vapply(seq_along(x), function(i) {
+      v <- .deparse_arg(if (is.list(x)) x[[i]] else unname(x[i]))
+      if (nzchar(nms[i])) paste0(.r_string(nms[i]), " = ", v) else v
+    }, character(1L))
+    return(paste0(if (is.list(x)) "list(" else "c(",
+                  paste(items, collapse = ", "), ")"))
+  }
+  if (is.character(x) && is.null(attributes(x))) {
+    if (length(x) == 0L) return("character(0)")
+    if (length(x) == 1L) return(.r_string(x))
+    return(paste0("c(", paste(vapply(x, .r_string, "", USE.NAMES = FALSE),
+                              collapse = ", "), ")"))
+  }
+  .ascii_escape(paste(deparse(x, width.cutoff = 60L), collapse = ""))
+}
 
 #' Write a function call as R source
 #'
@@ -41,7 +114,13 @@
   if (is.null(nms)) nms <- rep("", length(args))
   parts <- vapply(seq_along(args), function(i) {
     v <- .deparse_arg(args[[i]])
-    if (nzchar(nms[i])) paste0(nms[i], " = ", v) else v
+    # A name that is not a syntactic R name is quoted. Argument names always
+    # are; the names of a lookup vector built from the data -- age band
+    # labels, group levels -- are not, and `70 to 79 = 70` does not parse.
+    nm <- nms[i]
+    if (nzchar(nm) && !grepl("^([.][._A-Za-z]|[A-Za-z])[._A-Za-z0-9]*$", nm))
+      nm <- .deparse_arg(nm)
+    if (nzchar(nm)) paste0(nm, " = ", v) else v
   }, character(1L))
 
   one_line <- paste0(fn, "(", paste(parts, collapse = ", "), close)
@@ -50,6 +129,38 @@
   pad <- strrep(" ", indent)
   paste0(fn, "(\n", pad, paste(parts, collapse = paste0(",\n", pad)),
          "\n", close)
+}
+
+# ── Restricting rows ──────────────────────────────────────────────────────────
+
+#' The R code restricting a data frame to the rows of one group
+#'
+#' The app applies a result's filter by evaluating exactly this code (see
+#' \code{.apply_filter()}), and the script writes it out, so the two select the
+#' same rows by construction. \code{which()} leaves out a row whose group is
+#' missing; indexing with the comparison itself would return such a row as a
+#' row of \code{NA}s.
+#'
+#' @param filter A list with \code{column} and \code{value}.
+#' @param data The name of the data frame to restrict.
+#' @return A single string.
+#' @keywords internal
+.filter_code <- function(filter, data = "analysis_data") {
+  paste0(data, "[which(as.character(", data, "[[",
+         .deparse_arg(as.character(filter$column)), "]]) == ",
+         .deparse_arg(as.character(filter$value)), "), , drop = FALSE]")
+}
+
+#' Apply a result's filter in the app
+#'
+#' @param df The data frame.
+#' @param filter A list with \code{column} and \code{value}, or \code{NULL}
+#'   for no restriction.
+#' @return \code{df}, restricted.
+#' @keywords internal
+.apply_filter <- function(df, filter) {
+  if (is.null(filter)) return(df)
+  eval(parse(text = .filter_code(filter, "df"))[[1L]], list(df = df))
 }
 
 # ── Object names ──────────────────────────────────────────────────────────────
@@ -87,7 +198,7 @@ script_from_session <- function(steps = list(), results = list(),
     c("", paste0("# ", n, ". ", heading, " ",
                  strrep("-", max(4L, 74L - nchar(heading) - nchar(n))), ""), "")
 
-  out <- .script_header(title)
+  out <- c(.script_header(title), .script_parsers(), "")
   out <- c(out, section(1L, "Load data"), .script_load(steps))
   out <- c(out, section(2L, "Validation"), .script_validate(steps))
   out <- c(out, section(3L, "EQ-5D value calculation"), .script_values(steps))
@@ -202,13 +313,35 @@ script_from_session <- function(steps = list(), results = list(),
     "if (anyDuplicated(mapped))",
     "  stop(\"The same column is mapped twice.\")",
     "names(analysis_data)[match(mapped, names(analysis_data))] <- as_named",
+    if (any(c("vas", "utility") %in% to)) c(
+      "",
+      "# The EQ VAS and an existing EQ-5D value column as numbers, read from",
+      "# their labels if they are factors. The dimensions are checked, then",
+      "# converted, in the next section.",
+      if ("vas" %in% to) "analysis_data$vas <- parse_number(analysis_data$vas)",
+      if ("utility" %in% to)
+        "analysis_data$utility <- parse_number(analysis_data$utility)"))
+}
+
+# The functions the script reads values with: the package's own
+# .parse_number() and .parse_levels(), deparsed, so the script reads every
+# value exactly as the app does -- labels rather than factor codes, and a
+# dimension that is not a whole level of the instrument as NA rather than
+# truncated (review Q01, Q08). test-preprocessing-equivalence.R checks they
+# agree on a battery of inputs.
+.script_parsers <- function() {
+  fn_src <- function(name, f) {
+    body <- deparse(f, width.cutoff = 70L)
+    body <- gsub(".parse_number(", "parse_number(", body, fixed = TRUE)
+    c(paste0(name, " <- ", body[1L]), body[-1L])
+  }
+  c("# How the app reads values. A factor is read through its labels, never",
+    "# its level codes; a number is kept exactly. A dimension value is an",
+    "# EQ-5D level only if it is a whole number from 1 to the instrument's",
+    "# highest level, and NA otherwise: 1.9 is not rounded to either level.",
+    fn_src("parse_number", .parse_number),
     "",
-    "# The dimensions have to be integer and the EQ VAS numeric. A value that",
-    "# is neither becomes NA, with a warning, as it does in the app.",
-    paste0("for (d in ", .deparse_arg(std), ")"),
-    "  analysis_data[[d]] <- as.integer(analysis_data[[d]])",
-    if ("vas" %in% to)
-      "analysis_data$vas <- as.numeric(analysis_data$vas)")
+    fn_src("parse_levels", .parse_levels))
 }
 
 # The checks the app runs on its Validation page, in the order it runs them.
@@ -226,7 +359,7 @@ script_from_session <- function(steps = list(), results = list(),
     return("# No columns were mapped, so there was nothing to check.")
   mapping <- map$mapping
   std <- c("mo", "sc", "ua", "pd", "ad")
-  max_level <- if (identical(mapping$eq5d_version, "3L")) 3L else 5L
+  max_level <- .max_level(mapping$eq5d_version)
   has <- function(nm) {
     v <- mapping[[nm]]
     !is.null(v) && length(v) == 1L && !is.na(v) && nzchar(v)
@@ -242,12 +375,18 @@ script_from_session <- function(steps = list(), results = list(),
     "  stop(\"EQ-5D columns not found in data: \",",
     "       paste(absent, collapse = \", \"))",
     "",
-    "out_of_range <- vapply(analysis_data[dims], function(v)",
-    paste0("  any(!is.na(v) & (v < 1L | v > ", max_level, "L)), logical(1L))"),
-    "if (any(out_of_range))",
-    paste0("  warning(\"Levels outside 1-", max_level, " in: \", ",
-           "paste(dims[out_of_range], collapse = \", \"),"),
-    "          \". The analysis functions set them to NA.\", call. = FALSE)",
+    "# A value that is a number but not a level of the instrument -- 1.9,",
+    "# or 9 used as a missing code -- is reported, then set to NA, as in the",
+    "# app. Text that is not a number counts as missing.",
+    paste0("max_level <- ", max_level, "L"),
+    "invalid <- vapply(analysis_data[dims], function(v)",
+    "  any(!is.na(parse_number(v)) & is.na(parse_levels(v, max_level))),",
+    "  logical(1L))",
+    "if (any(invalid))",
+    "  warning(\"Some values in \", paste(dims[invalid], collapse = \", \"),",
+    "          \" are not a level of the instrument (a whole number from 1 to \",",
+    "          max_level, \") and are set to NA.\", call. = FALSE)",
+    "for (d in dims) analysis_data[[d]] <- parse_levels(analysis_data[[d]], max_level)",
     "",
     "complete <- sum(stats::complete.cases(analysis_data[dims]))",
     "message(format(complete, big.mark = \",\"), \" of \",",
@@ -267,7 +406,7 @@ script_from_session <- function(steps = list(), results = list(),
         "# Cross-sectional data: one row per patient.",
         "if (anyDuplicated(analysis_data$id))",
         "  warning(\"Repeated patient IDs. If these data are longitudinal, \",",
-        "          \"map a timepoint column.\", call. = FALSE)"))
+        "          \"select a timepoint variable.\", call. = FALSE)"))
   }
 
   # Follow-up values outside the order the user gave become NA downstream.
@@ -319,20 +458,18 @@ script_from_session <- function(steps = list(), results = list(),
           "# 65 -- exactly those midpoints -- so a band that straddles a",
           "# boundary falls in the upper one and the result is an",
           "# approximation. Use exact ages where they are available.",
-          "band_midpoint <- function(x) {",
-          "  x  <- trimws(as.character(x))",
-          "  lo <- as.numeric(sub(\"^[^0-9]*([0-9]+).*$\", \"\\\\1\", x))",
-          "  hi <- as.numeric(sub(\"^.*?[0-9]+[^0-9]+([0-9]+).*$\", \"\\\\1\", x))",
-          "  open <- !is.na(lo) & is.na(hi)",
-          "  hi[open] <- lo[open] + 9    # a band open at the top, \"65+\",",
-          "                              # is taken as ten years wide",
-          "  (lo + hi + 1) / 2",
-          "}",
-          paste0("age_years <- band_midpoint(analysis_data[[",
-                 .deparse_arg(v$age_col), "]])"))
+          "#",
+          "# Each label is replaced by the age the app used for it: the",
+          "# midpoint of a closed band, or the lower bound of a band open at",
+          "# the top, where every age in it falls in the same DSU category.",
+          "# A label that could identify more than one category has no entry",
+          "# and becomes NA, as it did in the app.",
+          .deparse_call("age_for_band <- c", as.list(v$age_lookup), width = 0L),
+          paste0("age_years <- unname(age_for_band[as.character(analysis_data[[",
+                 .deparse_arg(v$age_col), "]])])"))
       } else {
         out <- c(out,
-          paste0("age_years <- as.numeric(analysis_data[[",
+          paste0("age_years <- parse_number(analysis_data[[",
                  .deparse_arg(v$age_col), "]])"))
       }
       out <- c(out,
@@ -422,17 +559,31 @@ script_from_session <- function(steps = list(), results = list(),
     if (i > 1L) out <- c(out, "", "")
 
     out <- c(out, paste0("# 4", letters[i], ". ", r$label))
+
+    # A result whose rows were restricted, or whose data needed a stand-in
+    # column, gets a data frame of its own, so that nothing done for one
+    # result changes the data the next one is run on.
+    data_name <- "analysis_data"
+    if (!is.null(cl$filter) || !is.null(cl$prep)) {
+      data_name <- paste0(objs[i], "_data")
+      out <- c(out,
+        if (!is.null(cl$filter)) c(
+          "#      Restricted to one group, as in the app. A row whose group is",
+          "#      missing belongs to no group and is left out.",
+          paste0(data_name, " <- ", .filter_code(cl$filter)))
+        else paste0(data_name, " <- analysis_data"))
+    }
     if (identical(cl$prep, "groupvar"))
       out <- c(out,
         "#      No group column was mapped; the by-group analyses need one.",
-        "analysis_data$groupvar <- \"All\"")
+        paste0(data_name, "$groupvar <- \"All\""))
     if (identical(cl$prep, "fu_all"))
       out <- c(out,
         "#      No timepoint was mapped; a single-level one stands in for it.",
-        "analysis_data$.fu_all. <- factor(\"All\")")
+        paste0(data_name, "$.fu_all. <- factor(\"All\")"))
 
     out <- c(out, .deparse_call(paste0(objs[i], " <- ", cl$fn),
-                                c(list(df = quote(analysis_data)), cl$args)))
+                                c(list(df = as.name(data_name)), cl$args)))
 
     if (identical(cl$type, "plot")) {
       out <- c(out, "",

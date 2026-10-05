@@ -51,19 +51,23 @@ Use crosswalk methods when:
 
 ## The current NICE position
 
-NICE's current methods (NICE, 2026) take the UK EQ-5D-5L
-value set (Rowen et al., 2026) as the reference case:
+NICE's interim methods statement of 27 August 2026 (NICE,
+2026; PMG51) takes the UK EQ-5D-5L value set (Rowen et al.,
+2026) as the reference case for topics started after that
+date -- for technology appraisals, those whose invitation to
+participate was issued after it. Topics started earlier
+continue to map EQ-5D-5L data to EQ-5D-3L utility values
+(with `eqxw_UK()`). For new topics:
 
 - **EQ-5D-5L data collected in the study** should be valued
   directly, with `eq5d5l(x, country = "GB")`. No mapping is
   needed.
 - **Only EQ-5D-3L data available** → map with `eqxwr_UK()`,
-  which is the mapping NICE currently recommends in that
-  situation.
+  the mapping the statement specifies in that situation
+  (Hernández Alava et al., 2023).
 - `eqxw_UK()` maps in the other direction, to the older UK
-  EQ-5D-3L value set. It remains available for evaluations
-  begun under NICE's previous methods and for reproducing
-  earlier analyses.
+  EQ-5D-3L value set. It remains for topics started before
+  27 August 2026 and for reproducing earlier analyses.
 
 ## Original crosswalk: eqxw()
 
@@ -202,8 +206,9 @@ from a UK population study. *PharmacoEconomics*, 41(2),
 199--207.
 
 Rowen D, Mukuria C, Bray N, et al. (2026). A UK value set
-for the EQ-5D-5L. *Value in Health*.
+for the EQ-5D-5L. *Value in Health*, 29(5), 858--869.
 
 National Institute for Health and Care Excellence (2026).
-Interim methods statement on the use of EQ-5D-5L data.
-*PharmacoEconomics*, 41(2), 199--207.
+Interim methods statement: implementing the EQ-5D-5L value
+set (PMG51). Published 27 August 2026.
+<https://www.nice.org.uk/process/pmg51>

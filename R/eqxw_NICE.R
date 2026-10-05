@@ -41,6 +41,16 @@
 }
 
 
+# Five dimension columns, in order, under the canonical names the encoder
+# expects. The columns are assumed to be in the conventional order already:
+# the caller has either matched them by name or supplied exactly five.
+.as_canonical_dims <- function(x) {
+  m <- as.matrix(as.data.frame(x))
+  colnames(m) <- c("mo", "sc", "ua", "pd", "ad")
+  m
+}
+
+
 # Age in years -> band index 1-5, or NA.
 #
 # Ages below 16 are outside the DSU's estimation sample and return NA with a
@@ -48,13 +58,27 @@
 # never silently read as band numbers, which is what the DSU's own R command
 # does.
 .nice_age_band <- function(age, .fname) {
-  age <- suppressWarnings(as.numeric(age))
+  # Through the labels: as.numeric() on a factor returns level codes, so
+  # factor("30") arrived as 1, below the mapping's lower limit, and returned
+  # NA where numeric 30 and character "30" both worked.
+  age <- .age_as_numeric(age)
   band <- rep(NA_integer_, length(age))
 
-  ok <- !is.na(age) & age >= .NICE_AGE_BREAKS[1L]
+  # An age must be a finite number. Inf passed the check for "16 or over"
+  # and was mapped as if in the oldest band (review Q03). There is still no
+  # upper limit: none is defined by the DSU, and none is invented here.
+  not_finite <- !is.na(age) & !is.finite(age)
+  if (any(not_finite))
+    warning(sprintf(
+      "[%s] %d age(s) are not a finite number (%s) and return NA.",
+      .fname, sum(not_finite),
+      paste(utils::head(unique(age[not_finite]), 3L), collapse = ", ")),
+      call. = FALSE)
+
+  ok <- is.finite(age) & age >= .NICE_AGE_BREAKS[1L]
   band[ok] <- findInterval(age[ok], .NICE_AGE_BREAKS)
 
-  too_young <- !is.na(age) & age < .NICE_AGE_BREAKS[1L]
+  too_young <- is.finite(age) & age < .NICE_AGE_BREAKS[1L]
   if (any(too_young))
     warning(sprintf(
       "[%s] %d age(s) below %d; the NICE mapping is not defined for them and they return NA.",
@@ -105,7 +129,19 @@
 
   is_2d <- length(dim(x)) == 2L
 
-  if (is_2d) {
+  if (is_2d && is.numeric(dim.names)) {
+    # Column positions.
+    bad <- !(dim.names == trunc(dim.names) & dim.names >= 1 & dim.names <= ncol(x))
+    if (any(bad))
+      stop(sprintf("[%s] `dim.names` position(s) %s are not columns of `x`, which has %d.",
+                   .fname, paste(dim.names[bad], collapse = ", "), ncol(x)),
+           call. = FALSE)
+    age  <- pick(age,  "age")
+    male <- pick(male, "male")
+    dims <- as.data.frame(x)[, dim.names, drop = FALSE]
+    state <- suppressMessages(toEQ5Dindex(.as_canonical_dims(dims), quiet = TRUE))
+    score <- NULL
+  } else if (is_2d) {
     cn <- tolower(colnames(x))
     has_dims <- !is.null(cn) && all(tolower(dim.names) %in% cn)
 
@@ -113,12 +149,17 @@
       age  <- pick(age,  "age")
       male <- pick(male, "male")
       dims <- as.data.frame(x)[, match(tolower(dim.names), cn), drop = FALSE]
-      state <- suppressMessages(toEQ5Dindex(as.matrix(dims), quiet = TRUE))
+      # Canonical names before encoding. The columns were selected in the
+      # right order but kept the caller's names, and toEQ5Dindex() looks for
+      # mo/sc/ua/pd/ad, so the documented dim.names argument could not work:
+      # it failed with "Required dimension column(s) not found in 'x'".
+      state <- suppressMessages(toEQ5Dindex(.as_canonical_dims(dims), quiet = TRUE))
       score <- NULL
     } else if (ncol(x) == 5L) {
       age  <- pick(age,  "age")
       male <- pick(male, "male")
-      state <- suppressMessages(toEQ5Dindex(as.matrix(x), quiet = TRUE))
+      # Five columns in the conventional order, whatever they are called.
+      state <- suppressMessages(toEQ5Dindex(.as_canonical_dims(x), quiet = TRUE))
       score <- NULL
     } else {
       stop(sprintf(
@@ -132,10 +173,38 @@
     # the source instrument. Anything else is treated as an EQ-5D value.
     pat <- sprintf("^[1-%d]{5}$", max_level)
     looks_state <- !is.na(chr) & grepl(pat, chr)
-    if (all(looks_state | is.na(chr))) {
-      state <- suppressWarnings(as.integer(chr)); score <- NULL
+    # The mode used to be chosen with all(looks_state | is.na(chr)), so one
+    # unusable record -- 99999 in a column of states -- reinterpreted the
+    # entire vector as aggregate EQ-5D values and every respondent came back
+    # NA, with a message about the bandwidth. A value can never look like a
+    # five-digit state (EQ-5D values do not exceed 1), so the presence of any
+    # state is enough to settle the mode; records that are not states are
+    # then invalid states, reported as such, and the rest keep their values.
+    if (any(looks_state) || all(is.na(chr))) {
+      state <- rep(NA_integer_, length(chr))
+      state[looks_state] <- as.integer(chr[looks_state])
+      unusable <- !looks_state & !is.na(chr)
+      if (any(unusable))
+        warning(sprintf(
+          "[%s] %d of %d record(s) are not an EQ-5D-%s health state and return NA: %s. The rest are unaffected.",
+          .fname, sum(unusable), length(chr), if (max_level == 3L) "3L" else "5L",
+          paste(utils::head(unique(chr[unusable]), 5L), collapse = ", ")),
+          call. = FALSE)
+      score <- NULL
     } else {
-      state <- NULL; score <- suppressWarnings(as.numeric(v))
+      # Values through their labels: as.numeric() on a factor returned its
+      # level codes, so factor(c(.2, .8)) was mapped as 1 and 2 (review Q06).
+      # An entry that is not a finite number is NA, and says so.
+      state <- NULL
+      score <- .parse_number(v)
+      unusable <- !is.na(chr) & nzchar(chr) & !is.finite(score)
+      if (any(unusable))
+        warning(sprintf(
+          "[%s] %d value(s) are not a number and return NA: %s.",
+          .fname, sum(unusable),
+          paste(utils::head(unique(chr[unusable]), 5L), collapse = ", ")),
+          call. = FALSE)
+      score[!is.finite(score)] <- NA_real_
     }
   }
 
@@ -186,8 +255,7 @@
                        dim.names = c("mo", "sc", "ua", "pd", "ad"),
                        bwidth = 0, .fname = "eqxw_NICE") {
 
-  if (length(dim.names) != 5L)
-    stop(sprintf("[%s] `dim.names` must be of length 5.", .fname), call. = FALSE)
+  .check_dim_names(dim.names, .fname)
 
   meta <- .NICE_DIRECTIONS[[direction]]
   cw   <- .nice_table(direction, .fname)

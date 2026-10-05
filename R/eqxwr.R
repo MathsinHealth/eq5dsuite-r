@@ -103,7 +103,7 @@ eqxwr <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad")
     stop('No valid countries listed.')
   }
   
-  x <- as.integer(x)
+  x <- .parse_states(x)
   x[!regexpr("^[1-3]{5}$", x)==1] <- NA
   
   if(length(country)>1) {
@@ -125,9 +125,12 @@ eqxwr <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad")
 #'   al. 2023).
 #'
 #' @details
-#' This is the mapping NICE currently recommends when only EQ-5D-3L data are
-#' available (NICE 2026): the 3L responses are mapped so that they can be valued
-#' on the UK EQ-5D-5L value set, which is the reference case.
+#' This is the mapping NICE's interim methods statement of 27 August 2026
+#' (NICE 2026, PMG51) specifies when EQ-5D-5L data from a relevant study are
+#' not available and EQ-5D-3L data are used instead: the 3L responses are
+#' mapped to utility values on the UK EQ-5D-5L value set, the reference case
+#' for topics started after that date. (Checked against the statement on 4
+#' October 2026.)
 #'
 #' The mapping is age- and sex-specific. It is \strong{not} the reverse
 #' crosswalk of van Hout and Shaw (2021) implemented in \code{\link{eqxwr}},
@@ -191,7 +194,8 @@ eqxwr <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad")
 #' \emph{Value in Health} 29(5):858-869. \doi{10.1016/j.jval.2026.03.008}
 #'
 #' National Institute for Health and Care Excellence (2026). Interim methods
-#' statement on the use of EQ-5D-5L data.
+#' statement: implementing the EQ-5D-5L value set (PMG51). Published 27 August
+#' 2026. \url{https://www.nice.org.uk/process/pmg51}
 #' @source
 #' The mapping tables are taken from the publicly available commands for
 #' mapping between the EQ-5D-3L and the EQ-5D-5L published by the NICE

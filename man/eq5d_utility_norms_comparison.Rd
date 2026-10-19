@@ -24,7 +24,9 @@ used. The values are analysed as they stand; see
 \item{name_fu}{Character string for the follow-up column}
 
 \item{levels_fu}{Character vector containing the order of the values in the follow-up column.
-If NULL (default value), the levels will be ordered in the order of appearance in df.}
+If NULL (default value), the levels will be ordered in the order of appearance in df.
+The first level is the baseline, and only records at the baseline are
+summarised.}
 
 \item{name_groupvar}{Character string for the grouping column. If NULL (default), the analysis is performed on the full population.}
 
@@ -35,6 +37,13 @@ Summary data frame
 }
 \description{
 eq5d_utility_norms_comparison:EQ-5D values: by age and groupvar
+}
+\details{
+The comparison with population norms describes the sample at
+  baseline: only records at the first timepoint in \code{levels_fu} are
+  used, so each respondent counts once, and a message says which timepoint
+  that is. Records at other timepoints, or with a missing timepoint, are
+  not included.
 }
 \examples{
 example_data$ageband <- factor(

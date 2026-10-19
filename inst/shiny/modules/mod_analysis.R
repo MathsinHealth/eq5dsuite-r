@@ -493,7 +493,7 @@ CATALOGUE <- list(
 # Which rows hold a complete, valid EQ-5D profile.
 valid_profiles <- function(df, rv) {
   ver <- rv$mapping$eq5d_version %||% "3L"
-  max_level <- if (identical(ver, "3L")) 3L else 5L
+  max_level <- eq5dsuite:::.max_level(ver)
   dims <- intersect(DIMS_STD, names(df))
   if (length(dims) == 5L)
     Reduce(`&`, lapply(dims, function(d)
@@ -542,7 +542,21 @@ analysis_data_facts <- function(rv) {
       pchc_states <- unique(st[!is.na(st)])
     }
   }
+  # Whether the paired analyses can pair the records: one per respondent and
+  # selected timepoint, and, for those split by group, one group per
+  # respondent. The package's own check decides, so the app and the analysis
+  # cannot disagree (review A03, A04).
+  pair_ok <- function(by_group) {
+    if (!has("fu") || !has("id")) return(TRUE)
+    d <- data.frame(id = df$id, fu = fu, stringsAsFactors = FALSE)
+    if (by_group) d$groupvar <- grp
+    isTRUE(tryCatch(eq5dsuite:::.check_pairs(d, by_group = by_group),
+                    error = function(e) FALSE))
+  }
+  one_per_visit <- pair_ok(FALSE)
   list(
+    one_per_visit = one_per_visit,
+    one_group    = !has("groupvar") || !one_per_visit || pair_ok(TRUE),
     profiles     = any(profile_ok),
     timepoints   = length(unique(fu[profile_ok & !is.na(fu)])),
     paired       = paired,
@@ -571,6 +585,11 @@ analysis_prerequisites <- function(spec, rv, facts = analysis_data_facts(rv)) {
     out <- c(out, "at least two timepoints")
   if (all(c("fu", "id") %in% n) && !facts$paired)
     out <- c(out, "a respondent with valid profiles at two timepoints")
+  if (all(c("fu", "id") %in% n) && !isTRUE(facts$one_per_visit))
+    out <- c(out, paste0("one record per respondent at each timepoint (some ",
+                         "respondents have more than one)"))
+  else if (spec$id %in% PAIRED_BY_GROUP && !isTRUE(facts$one_group))
+    out <- c(out, "each respondent in the same group at every timepoint")
   if ("groupvar" %in% n && !"utility" %in% n && !facts$groups)
     out <- c(out, "a group recorded for some respondents")
   if ("vas" %in% n && !"utility" %in% n && !facts$vas)
@@ -592,6 +611,10 @@ analysis_prerequisites <- function(spec, rv, facts = analysis_data_facts(rv)) {
   }
   out
 }
+
+# The paired analyses that split respondents by group (they take
+# .pchc_args()), and so need each respondent to stay in one group.
+PAIRED_BY_GROUP <- c("122", "123", "121fig", "122fig", "123fig", "124fig")
 
 # The figures that plot one change category, and what they need.
 PCHC_CATEGORY_NEEDED <- list(

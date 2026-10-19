@@ -25,6 +25,7 @@
 #' @return A numeric vector of crosswalk values, or a data.frame with one
 #'   column per crosswalk set requested. The result is an unnamed numeric vector, one element per
 #'   element or row of \code{x} and in the same order.
+#' @inheritSection eq5d Missing and invalid responses
 #' @examples 
 #' eqxw(c(11111, 12521, 32123, 55555), 'US')
 #' eqxw(make_all_EQ_states('5L'), c('DK', 'US'))
@@ -92,9 +93,14 @@ eqxw <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"))
 #' @param male 1 for male and 0 for female (\code{TRUE}/\code{FALSE} are
 #'   accepted), as a vector or, when \code{x} is a data frame, a column name.
 #' @param dim.names A vector of dimension names to identify dimension columns.
-#' @param bwidth Kernel half-width, used only for value input. \code{0} (the
-#'   default) matches values exactly. \code{"default"} applies the DSU's
-#'   recommended bandwidths for mean values.
+#' @param bwidth Kernel half-width, used only for value input: a finite
+#'   number of at least 0, or one per row. \code{0} (the default) matches
+#'   values exactly. \code{"default"} applies the DSU's
+#'   recommended bandwidths for mean values exactly as the DSU's own R command
+#'   (April 2026 release) does: 0.1 for a value above 0.6 and 0.4 for a value
+#'   of 0.6 or below. NICE's FAQ to its interim methods statement (PMG51)
+#'   describes 0.6 itself as in the 0.1 range; the two differ only for a value
+#'   of exactly 0.6, where a numeric \code{bwidth} can be given instead.
 #' @return An unnamed numeric vector of mapped EQ-5D values, one per row of
 #'   \code{x} and in the same order.
 #' @references

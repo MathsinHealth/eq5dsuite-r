@@ -16,7 +16,7 @@ A data frame with 10000 rows and 12 variables:
   \item{\code{ad}}{integer EQ-5D-3L Anxiety/depression dimension (1-3; 9 = missing)}
   \item{\code{vas}}{integer EQ VAS score (0-100; 999 = missing)}
   \item{\code{procedure}}{character Type of surgery (Groin Hernia / Hip Replacement / Knee Replacement / Varicose Vein)}
-  \item{\code{year}}{character Year of intervention (2013/14 to 2016/17)}
+  \item{\code{year}}{character Financial year of the operation, April to March (2013/14 to 2016/17)}
   \item{\code{ageband}}{character Age in pre-defined ranges (20 to 29, ..., 80 to 89; NA where not recorded)}
   \item{\code{gender}}{character Patient's gender (Female / Male / Not specified; NA where not recorded)}
 }
@@ -32,8 +32,10 @@ A sample of patient-level EQ-5D-3L data from the NHS Patient
   Missing values in the EQ-5D dimensions and in the EQ VAS are recorded with
   numeric codes rather than \code{NA}: \code{9} in \code{mo}, \code{sc},
   \code{ua}, \code{pd} and \code{ad} (1,323 cells across 497 records), and
-  \code{999} in \code{vas} (671 records). The analysis functions coerce these
-  to \code{NA}, with a warning. \code{ageband} and \code{gender} use
+  \code{999} in \code{vas} (671 records). Both the analysis functions and
+  the value functions (\code{eq5d3l()}, \code{eq5d()}, \code{eqxwr()} and
+  so on) treat these as invalid: they set them to \code{NA}, with a
+  warning. Recode them to \code{NA} first to avoid the warning. \code{ageband} and \code{gender} use
   \code{NA} directly (970 records each).
 }
 \keyword{datasets}

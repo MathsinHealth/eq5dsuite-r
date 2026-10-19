@@ -45,10 +45,38 @@ the installed package, which CRAN does not permit.
 \item{savePath}{A path where the cache data should be saved when `saveOption` is 3. Please use `eqvs_load` to load it in your next session.}
 }
 \value{
-True/False, indicating success or error.
+Called for its side effect. When the value set is added,
+  \code{NULL}, invisibly, with a message. When \code{VSCode} is already
+  used by one of your own value sets for this instrument, \code{0}, with a
+  warning, and nothing is added.
 }
 \description{
 Add user-defined EQ-5D value set and corresponding crosswalk option.
+}
+\details{
+Every check below is made before anything is changed, so a value set that
+fails one is not added, in part or in full, and nothing is saved.
+\itemize{
+  \item \code{df}, if a file name, must name an existing csv file, and must
+    have exactly two columns.
+  \item It must have exactly one row per health state of the instrument
+    (3,125 for the EQ-5D-5L, 243 for the EQ-5D-3L and EQ-5D-Y-3L), and every
+    state must be present exactly once. The rows may be in any order, and the
+    states may be given as numbers, text or factors; they must be whole
+    numbers, so \code{11111.9} is refused rather than read as \code{11111}.
+  \item The value set code (\code{VSCode}, or the name of the second column)
+    must not be a built-in value set code, compared without regard to case
+    and across all three instruments; this is an error. If it is the code of
+    one of your own value sets for the same instrument, again without regard
+    to case, the function warns and returns \code{0} without adding it.
+  \item Every value must be numeric and finite: \code{NA}, \code{NaN},
+    text, \code{Inf} and \code{-Inf} are errors.
+  \item With \code{saveOption = 3}, \code{savePath} must name an existing
+    directory. With \code{saveOption = 2} or \code{3}, if the cache cannot
+    be saved, the value set is removed again.
+}
+The values themselves are not checked further: nothing requires full health
+(\code{11111}) to be 1, or the values to fall as the levels worsen.
 }
 \examples{
 # Make a nonsense value set. The values are a plain sequence rather than

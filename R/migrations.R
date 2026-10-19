@@ -9,12 +9,7 @@
 #' @keywords internal
 fetch_migrations <- function() {
   url <- paste0(.vs_base_url, "migrations.csv")
-  tryCatch({
-    utils::read.csv(
-      curl::curl(url),
-      stringsAsFactors = FALSE
-    )
-  },
+  tryCatch(.remote_csv(url),
   error = function(e) {
     message("eq5dsuite: Could not fetch migrations: ",
             conditionMessage(e))

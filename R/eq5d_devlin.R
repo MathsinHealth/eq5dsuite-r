@@ -98,7 +98,8 @@ eq5d_profile_change_summary <- function(df,
   # here, so a call from inside another function with a local variable as an
   # argument failed, or picked up something else of the same name.
   if(is.null(name_fu)){
-    if("follow-up" %in% colnames(df)) name_fu <- "follow_up"
+    # The name found, not "follow_up", which was then not found (review A15).
+    if("follow-up" %in% colnames(df)) name_fu <- "follow-up"
     if("fu" %in% colnames(df)) name_fu <- "fu"
   }
   .freqtab(df = df, names_eq5d = names_eq5d, name_fu = name_fu,
@@ -146,6 +147,7 @@ eq5d_profile_top_states <- function(df,
 
   # all states (non-NA only), aggregated and sorted
   df_cc <- df[!is.na(df$state), , drop = FALSE]
+  .stop_if_no_records(nrow(df_cc), "eq5d_profile_top_states")
   states_agg <- aggregate(rep(1L, nrow(df_cc)), by = list(state = df_cc$state), FUN = sum)
   names(states_agg)[2] <- "n"
   states_agg <- states_agg[order(-states_agg$n), , drop = FALSE]
@@ -200,6 +202,14 @@ eq5d_profile_top_states <- function(df,
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @return Summary data frame
 #' @export
+#' @section Pairing records:
+#' Each respondent's records are compared in timepoint order, using only the
+#' timepoints in \code{levels_fu}. The function stops, naming the respondents,
+#' if a respondent has more than one record at the same timepoint: it cannot
+#' tell which to compare, and does not choose. Where the analysis is split by
+#' \code{name_groupvar}, it also stops if a respondent is not in the same
+#' group at every timepoint (a missing group at one timepoint counts as a
+#' change), because the change is attributed to the respondent's group.
 #' @examples
 #' eq5d_profile_pchc_table(
 #'   df = example_data,
@@ -245,15 +255,18 @@ eq5d_profile_pchc_table <- function(df,
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
   # sort by id - groupvar - time
 
-  df <- df[order(df$id, df$groupvar, df$fu), , drop = FALSE]
-  # check uniqueness of id-groupvar-fu combinations
-  .check_uniqueness(df, group_by = c("id", "groupvar", "fu"))
+  # One record per respondent and timepoint, each respondent in one group
+  # (.check_pairs()); then sorted by respondent and time only, so the pairs
+  # follow time whatever the group (review A03, A04).
+  .check_pairs(df, by_group = !is.null(name_groupvar))
+  df <- df[order(df$id, df$fu), , drop = FALSE]
 
   ### analysis ###
 
   # calculate change
   df <- .pchc(df = df, level_fu_1 = levels_fu[1])
   df <- df[!is.na(df$state), , drop = FALSE]
+  .stop_if_no_records(nrow(df), "eq5d_profile_pchc_table", paired = TRUE)
   df$state <- factor(df$state, levels = c("No change", "Improve", "Worsen", "Mixed change"))
 
   # summarise by groupvar, fu & state
@@ -302,8 +315,13 @@ eq5d_profile_pchc_table <- function(df,
 #' @param name_fu Character string for the follow-up column
 #' @param levels_fu Character vector containing the order of the values in the follow-up column.
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
-#' @return Summary data frame
+#' @return Summary data frame. For each group and later timepoint, \code{_n}
+#'   is a count and \code{_p} a proportion: of everyone for "No problems" and
+#'   "Total with problems", and of those with problems for the four change
+#'   categories. Where nobody in a group had problems at a timepoint, those
+#'   four proportions are \code{NA}, as they have no denominator.
 #' @export
+#' @inheritSection eq5d_profile_pchc_table Pairing records
 #' @examples
 #' eq5d_profile_pchc_with_no_problems_table(
 #'   df = example_data,
@@ -348,15 +366,18 @@ eq5d_profile_pchc_with_no_problems_table <- function(df,
   df <- .prep_eq5d(df = df, names = names_eq5d)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
   # sort by id - groupvar - time
-  df <- df[order(df$id, df$groupvar, df$fu), , drop = FALSE]
-  # check uniqueness of id-groupvar-fu combinations
-  .check_uniqueness(df, group_by = c("id", "groupvar", "fu"))
+  # One record per respondent and timepoint, each respondent in one group
+  # (.check_pairs()); then sorted by respondent and time only, so the pairs
+  # follow time whatever the group (review A03, A04).
+  .check_pairs(df, by_group = !is.null(name_groupvar))
+  df <- df[order(df$id, df$fu), , drop = FALSE]
   
   ### analysis ###
   
   # calculate change
   df <- .pchc(df = df, level_fu_1 = levels_fu[1], add_noprobs = TRUE)
   df <- df[!is.na(df$state), , drop = FALSE]
+  .stop_if_no_records(nrow(df), "eq5d_profile_pchc_with_no_problems_table", paired = TRUE)
 
   # separate out those with problems & calculate percentages
   df_status <- df
@@ -370,15 +391,21 @@ eq5d_profile_pchc_with_no_problems_table <- function(df,
   summary_by_probs_status$p <- summary_by_probs_status$n /
     tapply(summary_by_probs_status$n, key_bp, sum)[key_bp]
 
-  # summarise classes within those with problems
+  # summarise classes within those with problems. Nobody may have had
+  # problems -- an all-healthy cohort -- and aggregate() fails on no rows
+  # ("no rows to aggregate"), so that case is an empty summary (review A08).
   df_probs <- df[df$state_noprobs != "No problems", , drop = FALSE]
-  summary_with_probs <- aggregate(rep(1L, nrow(df_probs)),
-    by = list(groupvar = df_probs$groupvar, fu = df_probs$fu,
-              state_noprobs = df_probs$state_noprobs), FUN = sum)
-  names(summary_with_probs)[names(summary_with_probs) == "x"] <- "n"
-  key_wp <- paste(summary_with_probs$groupvar, summary_with_probs$fu, sep = "\001")
-  summary_with_probs$p <- summary_with_probs$n /
-    tapply(summary_with_probs$n, key_wp, sum)[key_wp]
+  if (nrow(df_probs)) {
+    summary_with_probs <- aggregate(rep(1L, nrow(df_probs)),
+      by = list(groupvar = df_probs$groupvar, fu = df_probs$fu,
+                state_noprobs = df_probs$state_noprobs), FUN = sum)
+    names(summary_with_probs)[names(summary_with_probs) == "x"] <- "n"
+    key_wp <- paste(summary_with_probs$groupvar, summary_with_probs$fu, sep = "\001")
+    summary_with_probs$p <- summary_with_probs$n /
+      tapply(summary_with_probs$n, key_wp, sum)[key_wp]
+  } else {
+    summary_with_probs <- summary_by_probs_status[0L, , drop = FALSE]
+  }
 
   # combine & tidy up
   combined <- rbind(summary_with_probs, summary_by_probs_status)
@@ -396,8 +423,16 @@ eq5d_profile_pchc_with_no_problems_table <- function(df,
       sub <- combined[combined$groupvar == gv & as.character(combined$fu) == f, , drop = FALSE]
       vals_n <- setNames(sub$n, as.character(sub$state_noprobs))
       vals_p <- setNames(sub$p, as.character(sub$state_noprobs))
-      retval[[paste(gv, f, "n", sep = "_")]] <- ifelse(is.na(vals_n[retval$state_noprobs]), 0, vals_n[retval$state_noprobs])
-      retval[[paste(gv, f, "p", sep = "_")]] <- ifelse(is.na(vals_p[retval$state_noprobs]), 0, vals_p[retval$state_noprobs])
+      p <- ifelse(is.na(vals_p[retval$state_noprobs]), 0, vals_p[retval$state_noprobs])
+      # The change categories are proportions of those with problems. Where
+      # nobody in this group at this timepoint had problems there is no
+      # denominator, and 0 would read as an observed 0% (review A08).
+      with_probs <- vals_n["Total with problems"]
+      if (is.na(with_probs) || with_probs == 0)
+        p[retval$state_noprobs %in% c("No change", "Improve", "Worsen",
+                                      "Mixed change")] <- NA_real_
+      retval[[paste(gv, f, "n", sep = "_")]] <- as.numeric(ifelse(is.na(vals_n[retval$state_noprobs]), 0, vals_n[retval$state_noprobs]))
+      retval[[paste(gv, f, "p", sep = "_")]] <- unname(p)
     }
   }
   rownames(retval) <- NULL
@@ -416,6 +451,7 @@ eq5d_profile_pchc_with_no_problems_table <- function(df,
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @return Summary data frame
 #' @export
+#' @inheritSection eq5d_profile_pchc_table Pairing records
 #' @examples
 #' eq5d_profile_dimension_change_table(
 #'   df = example_data,
@@ -457,9 +493,9 @@ eq5d_profile_dimension_change_table <- function(df,
   df <- df[!is.na(df$fu), , drop = FALSE]
   # sort by id - time
 
+  # One record per respondent and timepoint (.check_pairs(); review A03).
+  .check_pairs(df)
   df <- df[order(df$id, df$fu), , drop = FALSE]
-  # check uniqueness of id-fu combinations
-  .check_uniqueness(df, group_by = c("id", "fu"))
   
   ### analysis ###
   
@@ -663,6 +699,7 @@ eq5d_profile_lfs_distribution <- function(df,
 
   # summarise non-NA values
   df_cc <- df[!is.na(df$lfs), , drop = FALSE]
+  .stop_if_no_records(nrow(df_cc), "eq5d_profile_lfs_distribution")
   counts <- aggregate(rep(1L, nrow(df_cc)), by = list(lfs = df_cc$lfs), FUN = sum)
   names(counts)[2] <- "n"
   counts <- counts[order(-counts$n), , drop = FALSE]
@@ -734,6 +771,7 @@ eq5d_profile_lfs_mean_utility <- function(df,
 
   # exclude NAs and count per (utility, lfs) combination
   df_cc <- df[!is.na(df$lfs), , drop = FALSE]
+  .stop_if_no_records(nrow(df_cc), "eq5d_profile_lfs_mean_utility")
   counts <- aggregate(rep(1L, nrow(df_cc)),
                       by = list(utility = df_cc$utility, lfs = df_cc$lfs), FUN = sum)
   names(counts)[3] <- "n"
@@ -1074,6 +1112,7 @@ eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
   }
 
   # Calculate frequencies & cumulative proportions
+  .stop_if_no_records(nrow(df), "eq5d_profile_density_curve")
   freq_agg <- aggregate(rep(1L, nrow(df)), by = list(state = df$state), FUN = sum)
   names(freq_agg)[2] <- "Frequency"
   freq_agg <- freq_agg[order(-freq_agg$Frequency), , drop = FALSE]
@@ -1092,8 +1131,13 @@ eq5d_profile_density_curve <- function(df, names_eq5d, eq5d_version) {
   # out of the plot subtitle, and got the rounded figure at that.
   hsdi <- 2 * hsdi_area
   
-  # Plot Health State Density Curve
-  p <- ggplot2::ggplot(profile_freq, ggplot2::aes(
+  # Plot Health State Density Curve. The curve starts at the origin, as the
+  # HSDI above does; plotting only the observed points left out its first
+  # segment, and with a single state there was no line at all (review A14).
+  # plot_data below is unchanged.
+  curve <- rbind(data.frame(CumPropObservations = 0, CumPropStates = 0),
+                 profile_freq[, c("CumPropObservations", "CumPropStates")])
+  p <- ggplot2::ggplot(curve, ggplot2::aes(
     x = .data$CumPropObservations, 
     y = .data$CumPropStates
   )) +
@@ -1361,14 +1405,13 @@ eq5d_utility_summary_by_group <- function(df,
   } else {
     names(df)[names(df) == name_groupvar] <- "groupvar"
   }
-  # Each group becomes a column below, so the group labels have to be strings.
-  # A missing group value is kept as its own group, labelled "NA", which is
-  # what eq5d_profile_level_summary_by_group() does with the same data. Left
-  # as NA it cannot name a column, and the pivot at the end of this function
-  # failed with "missing value where TRUE/FALSE needed"; left as a factor, the
-  # pivot would index by the level's integer code rather than its label.
+  # Each group becomes a column below, labelled by .group_labels(): a missing
+  # group value is kept as its own group, labelled "NA" (or "NA (missing)"
+  # when a real group is called "NA", which it used to be merged with). Left
+  # as NA it could not name a column, and the pivot failed with "missing value
+  # where TRUE/FALSE needed"; as a factor, the pivot would index by the
+  # level's integer code rather than its label.
   df$groupvar <- as.character(df$groupvar)
-  df$groupvar[is.na(df$groupvar)] <- "NA"
 
   df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("groupvar", "utility"), drop = FALSE]
@@ -1391,15 +1434,16 @@ eq5d_utility_summary_by_group <- function(df,
     check.names = FALSE, stringsAsFactors = FALSE
   )
 
-  # combine: pivot longer then wider (rows = stat names, cols = groups)
-  combined <- rbind(summary_by, summary_total)
-  stat_cols <- setdiff(names(combined), "groupvar")
-  grp_vals  <- unique(combined$groupvar)
+  # One column per group, then the total, placed by position rather than
+  # looked up by name: a missing group is labelled "(missing)" and kept apart
+  # from a group called "NA", and the total's label is made distinct from
+  # every group's (review A06, A07).
+  stat_cols <- setdiff(names(summary_by), "groupvar")
+  labs <- .group_labels(summary_by$groupvar)
   retval <- data.frame(name = stat_cols, stringsAsFactors = FALSE)
-  for (gv in grp_vals) {
-    sub <- combined[combined$groupvar == gv, stat_cols, drop = FALSE]
-    retval[[gv]] <- as.numeric(sub[1, ])
-  }
+  for (i in seq_along(labs))
+    retval[[labs[i]]] <- as.numeric(summary_by[i, stat_cols])
+  retval[[.total_label("All groups", labs)]] <- as.numeric(summary_total[1, stat_cols])
   rownames(retval) <- NULL
 
   # return value
@@ -1416,8 +1460,15 @@ eq5d_utility_summary_by_group <- function(df,
 #' @param name_fu Character string for the follow-up column
 #' @param levels_fu Character vector containing the order of the values in the follow-up column.
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
+#' The first level is the baseline, and only records at the baseline are
+#' summarised.
 #' @param name_groupvar Character string for the grouping column. If NULL (default), the analysis is performed on the full population.
 #' @param name_age Character string for the age column
+#' @details The comparison with population norms describes the sample at
+#'   baseline: only records at the first timepoint in \code{levels_fu} are
+#'   used, so each respondent counts once, and a message says which timepoint
+#'   that is. Records at other timepoints, or with a missing timepoint, are
+#'   not included.
 #' @return Summary data frame
 #' @export
 #' @examples
@@ -1472,6 +1523,17 @@ eq5d_utility_norms_comparison <- function(df,
   df <- .prep_utility(df = df, name = name_utility)
   df <- df[, c("groupvar", "age", "fu", "utility"), drop = FALSE]
 
+  # The baseline only: the first timepoint in levels_fu. The summaries below
+  # group by group and age alone, so every timepoint used to be pooled --
+  # including those .prep_fu() had just warned would be excluded -- and a
+  # respondent seen twice was counted twice (review A05).
+  baseline <- levels(df$fu)[1L]
+  if (length(levels(df$fu)) > 1L)
+    message("eq5d_utility_norms_comparison(): using the baseline timepoint \"",
+            baseline, "\" only; later timepoints are not included, so each ",
+            "respondent is counted once.")
+  df <- df[!is.na(df$fu) & df$fu == baseline, , drop = FALSE]
+
   # split age into categories
   if (is.numeric(df$age)) {
     age_breaks <- c(0, 18, seq(from = 25, to = 75, by = 10), Inf)
@@ -1485,6 +1547,23 @@ eq5d_utility_norms_comparison <- function(df,
   } else {
     stop("The 'age' column must be either numeric or factor.", call. = FALSE)
   }
+
+  # A record without an age (band) belongs in no column, and the table had
+  # no place for it: a missing band stopped the function. Such records are
+  # left out, and the message says how many.
+  no_age <- is.na(df$age_cat)
+  if (any(no_age)) {
+    message("eq5d_utility_norms_comparison(): ", sum(no_age), " record(s) ",
+            "without an age or age band are not included.")
+    df <- df[!no_age, , drop = FALSE]
+  }
+  # Groups are shown by label, a missing group as "(missing)"; the totals'
+  # labels are made distinct from the groups' and the age bands' (review
+  # A06, A07).
+  df$groupvar <- .group_labels(df$groupvar)
+  tot_g <- .total_label("Total", unique(df$groupvar))
+  tot_a <- .total_label("Total", if (is.factor(df$age_cat)) levels(df$age_cat)
+                                 else unique(df$age_cat))
 
   ### analysis ###
 
@@ -1506,14 +1585,14 @@ eq5d_utility_norms_comparison <- function(df,
   summary_by <- .summary_table_4_4(df = df, group_by = c("groupvar", "age_cat"))
   # summary of totals by groupvar (age_cat = "Total")
   summary_total_age <- .summary_table_4_4(df = df, group_by = "groupvar")
-  summary_total_age$age_cat <- "Total"
+  summary_total_age$age_cat <- tot_a
   # summary of totals by age_cat (groupvar = "Total")
   summary_total_by <- .summary_table_4_4(df = df, group_by = "age_cat")
-  summary_total_by$groupvar <- "Total"
+  summary_total_by$groupvar <- tot_g
   # overall total
   st <- .total_summary_4_4(df$utility)
-  st$groupvar <- "Total"
-  st$age_cat  <- "Total"
+  st$groupvar <- tot_g
+  st$age_cat  <- tot_a
   summary_total_by_age <- st
 
   # combine all
@@ -1559,6 +1638,7 @@ eq5d_utility_norms_comparison <- function(df,
 #'   \item{plot_data}{A tibble of PCHC percentages by group}
 #'   \item{p}{A ggplot2 object showing a bar chart with side-by-side bars for each PCHC category}
 #' @export
+#' @inheritSection eq5d_profile_pchc_table Pairing records
 #' @examples
 #' result <- eq5d_profile_pchc_by_group_plot(
 #'   df = example_data,
@@ -1609,17 +1689,22 @@ eq5d_profile_pchc_by_group_plot <- function(df,
   # Prepare EQ-5D & Follow-up columns
   df <- .prep_eq5d(df = df, names = names_eq5d)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  # One change per respondent, from the first timepoint to the second: the
+  # figure has no timepoint axis (review AI06).
+  df <- .first_two_timepoints(df, "eq5d_profile_pchc_by_group_plot")
+  levels_fu <- levels(df$fu)
 
-  # Sort by (id, groupvar, fu)
-  df <- df[order(df$id, df$groupvar, df$fu), , drop = FALSE]
-
-  # Check uniqueness: each (id, groupvar, fu) should appear at most once
-  .check_uniqueness(df, group_by = c("id", "groupvar", "fu"))
+  # One record per respondent and timepoint, each respondent in one group
+  # (.check_pairs()); then sorted by respondent and time only, so the pairs
+  # follow time whatever the group (review A03, A04).
+  .check_pairs(df, by_group = !is.null(name_groupvar))
+  df <- df[order(df$id, df$fu), , drop = FALSE]
 
   ### 2) Calculate PCHC (Paretian Classification) ###
   # .pchc() compares the first level in levels_fu (e.g. "Pre-op") vs. the second (e.g. "Post-op")
   df <- .pchc(df = df, level_fu_1 = levels_fu[1], add_noprobs = TRUE)
   df <- df[!is.na(df$state), , drop = FALSE]
+  .stop_if_no_records(nrow(df), "eq5d_profile_pchc_by_group_plot", paired = TRUE)
   # The factor levels for PCHC categories can be: "No problems", "No change", "Improve", "Worsen", "Mixed change"
   df$state_noprobs <- factor(
     df$state_noprobs,
@@ -1692,6 +1777,7 @@ eq5d_profile_pchc_by_group_plot <- function(df,
 #'   \item{p}{A ggplot2 object produced by `.pchc_plot_by_dim()`}
 #' @export
 #'
+#' @inheritSection eq5d_profile_pchc_table Pairing records
 #' @examples
 #' result <- eq5d_profile_better_dimensions_by_group_plot(
 #'   df = example_data,
@@ -1742,12 +1828,16 @@ eq5d_profile_better_dimensions_by_group_plot <- function(df,
   # Prepare EQ-5D & Follow-up columns
   df <- .prep_eq5d(df = df, names = names_eq5d)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  # One change per respondent, from the first timepoint to the second: the
+  # figure has no timepoint axis (review AI06).
+  df <- .first_two_timepoints(df, "eq5d_profile_better_dimensions_by_group_plot")
+  levels_fu <- levels(df$fu)
 
-  # Sort by (id, groupvar, fu)
-  df <- df[order(df$id, df$groupvar, df$fu), , drop = FALSE]
-
-  # Ensure uniqueness of (id, groupvar, fu)
-  .check_uniqueness(df, group_by = c("id", "groupvar", "fu"))
+  # One record per respondent and timepoint, each respondent in one group
+  # (.check_pairs()); then sorted by respondent and time only, so the pairs
+  # follow time whatever the group (review A03, A04).
+  .check_pairs(df, by_group = !is.null(name_groupvar))
+  df <- df[order(df$id, df$fu), , drop = FALSE]
 
   ### 2) Analysis ###
   # .pchc() calculates difference columns like mo_diff, sc_diff, etc.
@@ -1852,6 +1942,7 @@ eq5d_profile_better_dimensions_by_group_plot <- function(df,
 #'   \item{p}{A ggplot2 object produced by `.pchc_plot_by_dim()`}
 #' @export
 #'
+#' @inheritSection eq5d_profile_pchc_table Pairing records
 #' @examples
 #' result <- eq5d_profile_worse_dimensions_by_group_plot(
 #'   df = example_data,
@@ -1904,12 +1995,16 @@ eq5d_profile_worse_dimensions_by_group_plot <- function(df,
   # Prepare EQ-5D & Follow-up columns
   df <- .prep_eq5d(df = df, names = names_eq5d)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  # One change per respondent, from the first timepoint to the second: the
+  # figure has no timepoint axis (review AI06).
+  df <- .first_two_timepoints(df, "eq5d_profile_worse_dimensions_by_group_plot")
+  levels_fu <- levels(df$fu)
 
-  # Sort by (id, groupvar, fu)
-  df <- df[order(df$id, df$groupvar, df$fu), , drop = FALSE]
-
-  # Ensure uniqueness of (id, groupvar, fu)
-  .check_uniqueness(df, group_by = c("id", "groupvar", "fu"))
+  # One record per respondent and timepoint, each respondent in one group
+  # (.check_pairs()); then sorted by respondent and time only, so the pairs
+  # follow time whatever the group (review A03, A04).
+  .check_pairs(df, by_group = !is.null(name_groupvar))
+  df <- df[order(df$id, df$fu), , drop = FALSE]
 
   ### 2) Analysis: PCHC ###
 
@@ -2017,6 +2112,7 @@ eq5d_profile_worse_dimensions_by_group_plot <- function(df,
 #'
 #' @export
 #'
+#' @inheritSection eq5d_profile_pchc_table Pairing records
 #' @examples
 #' result <- eq5d_profile_mixed_dimensions_by_group_plot(
 #'   df = example_data,
@@ -2068,12 +2164,16 @@ eq5d_profile_mixed_dimensions_by_group_plot <- function(df,
   # Prepare EQ-5D & Follow-up columns
   df <- .prep_eq5d(df = df, names = names_eq5d)
   df <- .prep_fu(df = df, name = name_fu, levels = levels_fu)
+  # One change per respondent, from the first timepoint to the second: the
+  # figure has no timepoint axis (review AI06).
+  df <- .first_two_timepoints(df, "eq5d_profile_mixed_dimensions_by_group_plot")
+  levels_fu <- levels(df$fu)
 
-  # Sort by (id, groupvar, fu)
-  df <- df[order(df$id, df$groupvar, df$fu), , drop = FALSE]
-
-  # Check uniqueness
-  .check_uniqueness(df, group_by = c("id", "groupvar", "fu"))
+  # One record per respondent and timepoint, each respondent in one group
+  # (.check_pairs()); then sorted by respondent and time only, so the pairs
+  # follow time whatever the group (review A03, A04).
+  .check_pairs(df, by_group = !is.null(name_groupvar))
+  df <- df[order(df$id, df$fu), , drop = FALSE]
 
   ### 2) Analysis: Identify Mixed Change ###
 
@@ -2219,6 +2319,7 @@ eq5d_profile_mixed_dimensions_by_group_plot <- function(df,
 #'   \item{plot_data}{The plot data with ranks and classification.}
 #'   \item{p}{A \code{ggplot2} object displaying the HPG scatter plot.}
 #' @export
+#' @inheritSection eq5d_profile_pchc_table Pairing records
 #' @examples
 #' tmp <- eq5d_profile_health_profile_grid(
 #'            df = example_data,
@@ -2288,11 +2389,9 @@ eq5d_profile_health_profile_grid <- function(df,
          "\", so the states cannot be ranked. See eqvs_display() for the ",
          "codes available.", call. = FALSE)
 
-  # Sort by (id, fu)
+  # One record per respondent and timepoint (.check_pairs(); review A03).
+  .check_pairs(df)
   df <- df[order(df$id, df$fu), , drop = FALSE]
-
-  # Check uniqueness: each (id, fu) should appear at most once
-  .check_uniqueness(df, group_by = c("id", "fu"))
 
   ### 2) Calculate PCHC (Paretian Classification) ###
   # .pchc() compares the first level in levels_fu (e.g. "Pre-op") vs. the second (e.g. "Post-op")
@@ -2433,6 +2532,7 @@ eq5d_profile_lss_utility_plot <- function(df,
 
   # prepare data for plotting: remove NAs, group by lss, summarise
   df2 <- df[!is.na(df$lss) & !is.na(df$utility), , drop = FALSE]
+  .stop_if_no_records(nrow(df2), "eq5d_profile_lss_utility_plot", with_value = TRUE)
   plot_data <- do.call(rbind, lapply(split(df2$utility, df2$lss), function(vals) {
     data.frame(median = median(vals), min = min(vals), max = max(vals))
   }))
@@ -2562,6 +2662,7 @@ eq5d_profile_lfs_utility_plot <- function(df,
 
   # prepare data for plotting: remove NAs, group by lfs, summarise
   df2 <- df[!is.na(df$lfs) & !is.na(df$utility), , drop = FALSE]
+  .stop_if_no_records(nrow(df2), "eq5d_profile_lfs_utility_plot", with_value = TRUE)
   plot_data <- do.call(rbind, lapply(split(df2$utility, df2$lfs), function(vals) {
     data.frame(median = median(vals), min = min(vals), max = max(vals))
   }))
@@ -2749,6 +2850,11 @@ eq5d_vas_grouped_distribution_plot <- function(df, name_vas = NULL){
 #' @param levels_fu Character vector containing the order of the values in the follow-up column. 
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @return Summary plot and data used for plotting
+#' @section Confidence intervals:
+#' The 95\% confidence interval of a mean is the mean plus or minus 1.96
+#' standard errors, the standard error being the standard deviation divided
+#' by the square root of the number of values: a normal approximation, which
+#' is less accurate for small groups.
 #' @export
 #' @examples
 #' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
@@ -2819,6 +2925,7 @@ eq5d_utility_over_time_plot <- function(df,
 #'   \code{\link{eq5d}} for calculating them from the dimensions.
 #' @param name_groupvar Character string for the grouping column. If NULL (default), the analysis is performed on the full population.
 #' @return Summary plot and data used for plotting
+#' @inheritSection eq5d_utility_over_time_plot Confidence intervals
 #' @export
 #' @examples
 #' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
@@ -2858,14 +2965,18 @@ eq5d_utility_by_group_plot <- function(df,
 
   # prepare data for plotting
   plot_data <- .summary_mean_ci(df = df, group_by = "groupvar")
+  # Shown by label, the total's distinct from every group's (review A06,
+  # A07): a group called "All groups" made the factor levels below collide.
+  plot_data$groupvar <- .group_labels(plot_data$groupvar)
+  tot <- .total_label("All groups", plot_data$groupvar)
 
   # add totals
   plot_data_total <- .summary_mean_ci(df = df, group_by = NULL)
-  plot_data_total$groupvar <- "All groups"
+  plot_data_total$groupvar <- tot
   plot_data_total <- plot_data_total[, c("groupvar", setdiff(names(plot_data_total), "groupvar")), drop = FALSE]
 
   # combine
-  groupvar_levels <- c(plot_data$groupvar, "All groups")
+  groupvar_levels <- c(plot_data$groupvar, tot)
   plot_data <- rbind(plot_data, plot_data_total)
   plot_data$groupvar <- factor(plot_data$groupvar, levels = groupvar_levels)
   plot_data <- plot_data[order(plot_data$groupvar), , drop = FALSE]
@@ -2903,6 +3014,7 @@ eq5d_utility_by_group_plot <- function(df,
 #' If NULL (default value), the levels will be ordered in the order of appearance in df.
 #' @param name_groupvar Character string for the grouping column. If NULL (default), the analysis is performed on the full population.
 #' @return Summary plot and data used for plotting
+#' @inheritSection eq5d_utility_over_time_plot Confidence intervals
 #' @export
 #' @examples
 #' example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],

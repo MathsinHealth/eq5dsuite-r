@@ -100,6 +100,7 @@ eq5d_read_data <- function(path, type = NULL, sep = ",", dec = ".",
 #' @seealso \code{\link{eq5d_validate}}, which checks the same mapping.
 #' @keywords internal
 eq5d_apply_mapping <- function(df, mapping) {
+  mapping$eq5d_version <- .mapping_version(mapping$eq5d_version)
   if (!is.data.frame(df)) stop("`df` must be a data frame.", call. = FALSE)
   std_dims <- c("mo", "sc", "ua", "pd", "ad")
 
@@ -205,6 +206,7 @@ eq5d_apply_mapping <- function(df, mapping) {
 #' @seealso \code{\link{eq5d_apply_mapping}}
 #' @keywords internal
 eq5d_validate <- function(df, mapping, stop_on_error = FALSE, quiet = FALSE) {
+  mapping$eq5d_version <- .mapping_version(mapping$eq5d_version)
   if (!is.data.frame(df)) stop("`df` must be a data frame.", call. = FALSE)
 
   found <- list()
@@ -230,7 +232,7 @@ eq5d_validate <- function(df, mapping, stop_on_error = FALSE, quiet = FALSE) {
                             paste(utils::head(names(df), 60L), collapse = ", "),
                             if (ncol(df) > 60L) ", ..." else ""))))
   } else {
-    max_level <- if (identical(mapping$eq5d_version, "3L")) 3L else 5L
+    max_level <- if (.max_level(mapping$eq5d_version) == 3L) 3L else 5L
     # The same predicate the analysis functions use, so the page cannot bless
     # a value the analysis will discard. as.integer() ran first here, which
     # truncated 1.9 to 1 and then reported it as in range.
@@ -276,7 +278,9 @@ eq5d_validate <- function(df, mapping, stop_on_error = FALSE, quiet = FALSE) {
       note("ok", "No duplicate patient IDs.")
     } else if (.has_col(mapping$name_fu, df)) {
       fu_vals <- df[[mapping$name_fu]]
-      n_dup_pairs <- sum(duplicated(paste(ids, fu_vals, sep = "\u00b7")))
+      # Compared as values, not pasted text, so a missing ID is not the ID
+      # "NA" (review A06).
+      n_dup_pairs <- sum(duplicated(data.frame(ids, fu_vals)))
       n_tp <- length(unique(fu_vals))
       if (n_dup_pairs == 0L) {
         note("ok", "Repeated patient IDs detected across ", n_tp,
@@ -284,7 +288,8 @@ eq5d_validate <- function(df, mapping, stop_on_error = FALSE, quiet = FALSE) {
              "All ID\u2013timepoint combinations are unique.")
       } else {
         note("warning", n_dup_pairs, " ID\u2013timepoint combinations are ",
-             "duplicated. Check for duplicate records.",
+             "duplicated. Check for duplicate records: the paired analyses ",
+             "will not run until each patient has one record per timepoint.",
              details = .duplicate_details(df, mapping, by_fu = TRUE))
       }
     } else {
@@ -293,6 +298,18 @@ eq5d_validate <- function(df, mapping, stop_on_error = FALSE, quiet = FALSE) {
            "data, select a Timepoint variable.",
            details = .duplicate_details(df, mapping, by_fu = FALSE))
     }
+  }
+
+  # A patient's group must be the same at every timepoint for the paired
+  # analyses by group, which stop otherwise (.check_pairs(); review A04).
+  if (.has_col(mapping$name_id, df) && .has_col(mapping$name_fu, df) &&
+      .has_col(mapping$name_groupvar, df)) {
+    moved <- .group_changes(df, mapping)
+    if (length(moved$ids))
+      note("warning", .fmt_n(length(moved$ids)), " patient(s) are not in the ",
+           "same group at every timepoint. The paired analyses by group ",
+           "(the PCHC tables and figures) will not run for these data; the ",
+           "other analyses are unaffected.", details = moved$details)
   }
 
   # Follow-up levels the user did not list.
@@ -437,14 +454,16 @@ eq5d_validate <- function(df, mapping, stop_on_error = FALSE, quiet = FALSE) {
   rownames(records) <- NULL
 
   vals <- long$num[is.finite(long$num)]
-  emphasis <- if (identical(mapping$eq5d_version, "3L") && any(vals %in% c(4, 5)))
-    "Please check whether your data use EQ-5D-3L or EQ-5D-5L."
+  three <- .max_level(mapping$eq5d_version) == 3L
+  emphasis <- if (three && any(vals %in% c(4, 5)))
+    paste0("Please check whether your data use ",
+           .eq5d_instrument(toupper(mapping$eq5d_version)), " or EQ-5D-5L.")
   notes <- c(
     paste0("Each level must be a whole number from 1 to ", max_level,
            ". The values below are not, so the analyses treat them as ",
            "missing (NA). Nothing is rounded or recoded, and the instrument ",
            "selected on the Data page is not changed."),
-    if (identical(mapping$eq5d_version, "3L") && any(vals %in% c(4, 5)))
+    if (three && any(vals %in% c(4, 5)))
       paste0("Levels 4 and 5 exist only in the EQ-5D-5L. If these data are ",
              "EQ-5D-5L, choose that version on the Data page."),
     if (any(vals == 9))
@@ -508,10 +527,47 @@ eq5d_validate <- function(df, mapping, stop_on_error = FALSE, quiet = FALSE) {
 }
 
 # Repeated patient IDs, or repeated ID-timepoint pairs.
+# Patients whose group differs between timepoints, among the records of the
+# selected timepoints (all of them when none are selected). A missing group at
+# one timepoint and a group at another counts as a change, as in
+# .check_pairs().
+.group_changes <- function(df, mapping) {
+  ids <- df[[mapping$name_id]]
+  fu  <- as.character(df[[mapping$name_fu]])
+  g   <- .as_shown(df[[mapping$name_groupvar]])
+  use <- !is.na(ids) & !is.na(fu)
+  if (length(mapping$levels_fu)) use <- use & fu %in% as.character(mapping$levels_fu)
+  key <- as.character(ids[use])
+  n_g <- tapply(g[use], key, function(x) length(unique(x)))
+  moved <- names(n_g)[n_g > 1L]
+  if (!length(moved)) return(list(ids = character(0L), details = NULL))
+  rows <- which(use)[key %in% moved]
+  summary <- data.frame(
+    ID = moved,
+    Groups = vapply(moved, function(i)
+      paste(unique(g[use][key == i]), collapse = " / "), ""),
+    stringsAsFactors = FALSE)
+  rownames(summary) <- NULL
+  records <- .record_keys(df, mapping, rows)
+  records$Group <- g[rows]
+  list(ids = moved, details = .details(
+    summary = summary, records = records,
+    notes = paste0("A paired analysis by group attributes each patient's ",
+                   "change to their group, so each patient must stay in one ",
+                   "group. Check the group variable for these patients."),
+    denominator = paste0(.fmt_n(length(rows)), " of ", .fmt_n(nrow(df)),
+                         " rows are involved.")))
+}
+
 .duplicate_details <- function(df, mapping, by_fu) {
   ids <- .as_shown(df[[mapping$name_id]])
-  key <- if (by_fu) paste(ids, .as_shown(df[[mapping$name_fu]]), sep = "\u00b7")
-         else ids
+  # Grouped by value, not by pasted text (review A06).
+  raw <- df[[mapping$name_id]]
+  key <- match(raw, unique(raw))
+  if (by_fu) {
+    fu <- df[[mapping$name_fu]]
+    key <- paste(key, match(fu, unique(fu)), sep = ".")
+  }
   dup_keys <- unique(key[duplicated(key)])
   rows <- which(key %in% dup_keys)
   grp <- split(rows, key[rows])

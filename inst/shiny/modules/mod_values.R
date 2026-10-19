@@ -147,7 +147,20 @@ mod_values_server <- function(id, rv) {
         shiny::actionButton(ns("add"), "Add value column",
                             class = "btn-primary w-100",
                             icon = shiny::icon("plus")),
-        disclosure(
+        # The EQ-5D-Y-3L is offered a direct value set only, so its note
+        # describes only that.
+        if (identical(version(), "Y3L")) disclosure(
+          "About the methods",
+          shiny::p("A ", shiny::strong("direct"), " value set values the ",
+                   "responses with a value set published for that instrument."),
+          shiny::p("There is no crosswalk or mapping between the EQ-5D-Y-3L ",
+                   "and another instrument, so EQ-5D-Y-3L responses are ",
+                   "valued only with an EQ-5D-Y-3L value set."),
+          shiny::p(shiny::strong("Column names."), " The name offered is ",
+                   shiny::code("utility_"), ", then the code of the value ",
+                   "set: ", shiny::code("utility_DE"), ". Type your own and ",
+                   "it is kept.")
+        ) else disclosure(
           "About the methods",
           shiny::p("A ", shiny::strong("direct"), " value set values the ",
                    "responses with a value set published for that instrument."),
@@ -190,7 +203,7 @@ mod_values_server <- function(id, rv) {
       # The label names the instrument, so the list the user is looking at is
       # not left to inference. output$direction says it in a sentence.
       shiny::selectizeInput(
-        ns("country"), paste0("EQ-5D-", ver, " value set"),
+        ns("country"), paste0(instrument_label(ver), " value set"),
         choices = c("(select)" = "", ch),
         selected = if (keep) prev else "")
     })
@@ -317,8 +330,8 @@ mod_values_server <- function(id, rv) {
         xwr = paste0("Reverse crosswalk: EQ-5D-3L → EQ-5D-5L. Your 3L ",
                      "responses are valued on a 5L value set, after van Hout ",
                      "et al. (2021)."),
-        paste0("Direct: your EQ-5D-", v, " responses are valued on an EQ-5D-",
-               v, " value set."))
+        paste0("Direct: your ", instrument_label(v), " responses are ",
+               "valued on an ", instrument_label(v), " value set."))
       note("info", lbl)
     })
 
@@ -434,11 +447,18 @@ mod_values_server <- function(id, rv) {
             class = "btn-row",
             shiny::downloadButton(ns("download_csv"),  "CSV",
                                   class = "btn-outline-secondary"),
-            shiny::downloadButton(ns("download_xlsx"), "XLSX",
-                                  class = "btn-outline-secondary"),
+            # Offered only when writexl is installed. The button used to be
+            # there regardless and fail when clicked (review AI05).
+            if (has_package("writexl"))
+              shiny::downloadButton(ns("download_xlsx"), "XLSX",
+                                    class = "btn-outline-secondary"),
             shiny::downloadButton(ns("download_rds"),  "RDS",
                                   class = "btn-outline-secondary")
-          )
+          ),
+          if (!has_package("writexl"))
+            hint("An XLSX download needs the writexl package: ",
+                 shiny::code("install.packages(\"writexl\")", .noWS = "outside"),
+                 ".")
         )
       )
     })
@@ -490,7 +510,7 @@ mod_values_server <- function(id, rv) {
       # "No valid countries listed" would not say which of the two was wrong.
       if (!uk && !input$country %in% get_country_choices(vs_version())) {
         shiny::showNotification(
-          paste0("That value set is not published for EQ-5D-", vs_version(),
+          paste0("That value set is not published for ", instrument_label(vs_version()),
                  ", which is what this method values responses with. ",
                  "Choose another."),
           type = "warning", duration = 6)

@@ -1,8 +1,11 @@
 # Validation of eqxw_UK() and eqxwr_UK() against the NICE DSU's own R command.
 #
-# The fixtures hold the DSU's results, produced by
-# dsu_reference/validate_against_package.R, which runs the DSU's fun_map()
-# directly. They let this comparison run as an ordinary test without the DSU
+# The fixtures hold the DSU's results, produced by tools/dsu-fixtures.R
+# (in the repository, not the built package), which runs the DSU's fun_map()
+# directly and records the SHA-256 sums of the DSU files it used. The DSU
+# publishes its command without a licence, so it is not redistributed here:
+# the script says where to download it, and rebuilds or checks the fixtures
+# from it. They let this comparison run as an ordinary test without the DSU
 # material being present.
 #
 # Coverage:

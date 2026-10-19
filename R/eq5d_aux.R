@@ -34,7 +34,7 @@
     args[["name_fu"]] <- name_fu
     # check also levels of fu
     if (is.null(levels_fu)) {
-      message("No ordering of time suppled. The time variable will be factorised according to the order in the data frame.")
+      message("No ordering of time supplied. The time variable will be factorised according to the order in the data frame.")
       levels_fu <- unique(df[[name_fu]])
     }
     args[["levels_fu"]] <- levels_fu
@@ -341,20 +341,23 @@
   if (is.factor(x)) x <- as.character(x)
   xnum <- suppressWarnings(as.numeric(x))
 
-  # The EQ VAS is recorded as a whole number, so a value that is not one is
-  # rounded rather than discarded -- but not silently. round() is R's usual
-  # rounding, which takes a half to the nearest even number.
+  # Out of range, or not a number at all, becomes NA. The range is checked on
+  # the value as recorded, before rounding: rounding first turned -0.4 and
+  # 100.4 into 0 and 100, scores the Validation page had reported as out of
+  # range and missing (review A13). It also runs before as.integer() so that
+  # a value too large for an integer cannot raise a second, redundant
+  # coercion warning from R itself.
+  xnum[!is.na(xnum) & !(is.finite(xnum) & xnum >= 0 & xnum <= 100)] <- NA_real_
+
+  # The EQ VAS is recorded as a whole number, so a value within the range that
+  # is not one is rounded rather than discarded -- but not silently. round()
+  # is R's usual rounding, which takes a half to the nearest even number.
   rounded <- !is.na(xnum) & xnum != round(xnum)
   if (any(rounded))
     warning(sum(rounded), " VAS value(s) were not whole numbers and have been ",
             "rounded to the nearest integer, as the EQ VAS is recorded on a ",
             "0 to 100 integer scale.", call. = FALSE)
   xnum <- round(xnum)
-
-  # Out of range, or not a number at all, becomes NA. The range check runs
-  # before as.integer() so that a value too large for an integer cannot raise
-  # a second, redundant coercion warning from R itself.
-  xnum[!is.na(xnum) & (xnum < 0 | xnum > 100)] <- NA_real_
   v <- as.integer(xnum)
 
   coerced <- sum(is.na(v)) - sum(is.na(x))
@@ -410,6 +413,16 @@
   if (coerced > 0)
     warning(coerced, " EQ-5D value(s) were coerced to NAs as they were not ",
             "interpretable as numbers.", call. = FALSE)
+
+  # Inf and -Inf are not EQ-5D values (NaN is already NA). Kept, -Inf made
+  # the mean -Inf and the standard error NaN, and was counted as an
+  # observation (review AI06). Finite negative values are valid and kept.
+  nonfinite <- is.infinite(v)
+  if (any(nonfinite)) {
+    warning(sum(nonfinite), " EQ-5D value(s) were not finite numbers (Inf ",
+            "or -Inf) and have been set to NA.", call. = FALSE)
+    v[nonfinite] <- NA_real_
+  }
 
   too_high <- sum(!is.na(v) & v > 1)
   if (too_high > 0)
@@ -507,21 +520,54 @@
   c(H = h, Hmax = hmax, J = if (hmax > 0) h / hmax else NA_real_)
 }
 
-#' Check the uniqueness of groups
-#' This function takes a data frame `df` and a vector of columns `group_by`, and checks whether the combinations of values in the columns specified by `group_by` are unique. If they are not, it emits a message; it does not stop, and the caller carries on with the duplicated rows.
-#' @param df A data frame.
-#' @param group_by A character vector of column names in `df` that specify the groups to check for uniqueness.
-#' @return No return value. Called for its side effect: a \code{message()} naming the grouping columns when their combinations are not unique. It never raises a condition and never stops.
-#' @keywords internal
-.check_uniqueness <- function(df, group_by) {
+# Check that records can be paired, and stop if they cannot.
+#
+# The paired analyses compare each respondent's consecutive records. Two
+# records of one respondent at the same timepoint were compared with each
+# other, as if the second were a later visit, and counted as a further change
+# (review A03); a message prefixed "Warning:" was all the caller saw. They now
+# stop, naming the respondents: which record is right is the analyst's call.
+#
+# With `by_group`, a respondent must also be in the same group at every
+# timepoint. The records used to be sorted by group before time, so a
+# respondent whose group changed had their visits put out of order and
+# compared with the wrong one (review A04). A missing group at one timepoint
+# and a group at another is a change.
+#
+# Only records that take part are checked: those with an ID and a timepoint
+# in `levels_fu` (fu is NA for the rest after .prep_fu()).
+.check_pairs <- function(df, by_group = FALSE) {
+  use <- !is.na(df$id) & !is.na(df$fu)
+  id <- df$id[use]
+  fu <- as.character(df$fu[use])
+  shown <- function(ids) {
+    u <- unique(ids)
+    paste0(paste0("id ", utils::head(u, 5L), collapse = ", "),
+           if (length(u) > 5L) paste0(" and ", length(u) - 5L, " more") else "")
+  }
 
-  keys <- do.call(paste, c(df[group_by], list(sep = "\001")))
-  counts <- tabulate(match(keys, unique(keys)))
+  dup <- duplicated(data.frame(id = id, fu = fu, stringsAsFactors = FALSE))
+  if (any(dup)) {
+    ids <- id[dup]
+    stop(length(unique(ids)), " respondent(s) have more than one record at the ",
+         "same timepoint (", shown(ids), "). A paired analysis needs one ",
+         "record per respondent and timepoint, so it cannot tell which to ",
+         "compare. Remove or combine the duplicates first.", call. = FALSE)
+  }
 
-  if (!all(counts == 1L))
-    message(paste0("Warning: there are non-unique ",
-                   paste(group_by, collapse = "-"),
-                   " combinations."))
+  if (isTRUE(by_group) && "groupvar" %in% names(df)) {
+    g <- as.character(df$groupvar[use])
+    g[is.na(g)] <- "\001NA"
+    n_g <- tapply(g, as.character(id), function(x) length(unique(x)))
+    moved <- names(n_g)[n_g > 1L]
+    if (length(moved))
+      stop(length(moved), " respondent(s) are not in the same group at every ",
+           "timepoint (", shown(moved), "). A paired analysis by group ",
+           "needs each respondent to stay in one group, so that their change ",
+           "belongs to it; check the group variable for these respondents.",
+           call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 #' Get the mode of a vector.
@@ -583,9 +629,13 @@
   
   ### data preparation ###
   
+  # With no follow-up column the whole sample is one group. Its one level is
+  # given too: without it, .get_names() announced "No ordering of time
+  # supplied" for analyses that take no time variable at all.
   if(is.null(name_fu)) {
     df$`_all` <- "All"
     name_fu <- "_all"
+    levels_fu <- "All"
   }
   
   # replace NULL names with defaults
@@ -998,6 +1048,89 @@
   return(retval)
 }
 
+# Stop, saying why, when an analysis has no records left to work on. Analyses
+# that need a complete profile filter to complete ones first, and with none
+# left they failed inside aggregate() with "no rows to aggregate", or with
+# "incorrect number of dimensions" (review A09). Data with some dimensions
+# missing in every row still has usable dimensions, so this is checked per
+# analysis, after its own filtering, never for the data as a whole.
+.stop_if_no_records <- function(n, fn, paired = FALSE, with_value = FALSE) {
+  if (n > 0L) return(invisible(TRUE))
+  what <- if (paired)
+    "no respondent has complete, valid EQ-5D profiles at two of the timepoints in `levels_fu`"
+  else if (with_value)
+    "no record has both a complete, valid EQ-5D profile and an EQ-5D value"
+  else
+    "no record has a complete, valid EQ-5D profile"
+  stop(fn, "(): ", what, ", so there is nothing to summarise. A profile ",
+       "needs all five dimensions, each a level the instrument allows; ",
+       "eq5d_profile_level_summary() reports the dimensions that are there.",
+       call. = FALSE)
+}
+
+# Keep the first two timepoints of `fu`. The PCHC figures by group show one
+# change per respondent and have no timepoint axis; with three timepoints
+# they pooled the a->b and b->c changes into one bar while documenting a
+# comparison of two (review AI06). A third or later timepoint is set to NA,
+# with a message, and fewer than two is an error.
+.first_two_timepoints <- function(df, fn) {
+  lv <- levels(df$fu)
+  if (length(lv) < 2L)
+    stop(fn, "(): needs two timepoints in `levels_fu`, the first compared ",
+         "with the second; found ", length(lv), ".", call. = FALSE)
+  if (length(lv) > 2L) {
+    message(fn, "(): comparing \"", lv[1L], "\" and \"", lv[2L], "\" only, ",
+            "the first two timepoints in `levels_fu`; the figure shows one ",
+            "change per respondent.")
+    df$fu <- factor(as.character(df$fu), levels = lv[1:2])
+  }
+  df
+}
+
+# Rows of each group, for the summary helpers below.
+#
+# Groups are told apart by their values, not by pasting the values into one
+# string: paste() turned a missing group into the text "NA", so a real group
+# called "NA" and the missing one were summarised together, and a separator
+# inside a value could join two different groups (review A06). match() keeps
+# NA and "NA" apart. The groups come out in the order the pasted text sorted
+# them before, so outputs that had no such clash are unchanged.
+.group_rows <- function(df, group_by) {
+  codes <- lapply(df[group_by], function(x) match(x, unique(x)))
+  key <- do.call(paste, c(codes, list(sep = ".")))
+  rows <- split(seq_len(nrow(df)), factor(key, levels = unique(key)))
+  if (!length(rows)) return(rows)
+  legacy <- vapply(rows, function(r)
+    do.call(paste, c(lapply(df[r[1L], group_by, drop = FALSE], as.character),
+                     list(sep = "\001"))), character(1L))
+  unname(rows[order(legacy)])
+}
+
+# Display labels for the values of a grouping column. A missing group is
+# labelled "NA", as the by-group tables have labelled it -- unless a real
+# group is called "NA", when the missing one is "NA (missing)": the two used to
+# be summarised together (review A06). Any other coincidence is made distinct.
+.group_labels <- function(x, missing = "NA") {
+  u <- unique(x)
+  lab <- as.character(u)
+  if (anyNA(u))
+    lab[is.na(u)] <- if (missing %in% lab[!is.na(u)])
+      paste0(missing, " (missing)") else missing
+  lab <- make.unique(lab, sep = " ")
+  lab[match(x, u)]
+}
+
+# The label of a total, made distinct from the groups' labels. A group that
+# happened to be called "All groups" or "Total" took the total's place, and
+# the column that looked like the total held that group (review A07).
+.total_label <- function(label, taken) {
+  taken <- as.character(taken)
+  if (!label %in% taken) return(label)
+  out <- paste0(label, " (total)")
+  while (out %in% taken) out <- paste0(out, " ")
+  out
+}
+
 #' Summary wrapper for Table 4.3
 #' 
 #' This internal function creates a summary of the data frame for Table 4.3. 
@@ -1010,12 +1143,11 @@
 
 .summary_table_4_3 <- function(df, group_by) {
 
-  grp_key <- do.call(paste, c(df[group_by], list(sep = "\001")))
-  parts <- split(df$utility, grp_key)
+  rows <- .group_rows(df, group_by)
 
-  result_list <- lapply(names(parts), function(k) {
-    u <- parts[[k]]
-    group_vals <- df[match(k, grp_key), group_by, drop = FALSE]
+  result_list <- lapply(rows, function(r) {
+    u <- df$utility[r]
+    group_vals <- df[r[1L], group_by, drop = FALSE]
     row.names(group_vals) <- NULL
     cbind(group_vals, data.frame(
       Mean = mean(u, na.rm = TRUE),
@@ -1047,12 +1179,11 @@
 
 .summary_table_4_4 <- function(df, group_by) {
 
-  grp_key <- do.call(paste, c(df[group_by], list(sep = "\001")))
-  parts <- split(df$utility, grp_key)
+  rows <- .group_rows(df, group_by)
 
-  result_list <- lapply(names(parts), function(k) {
-    u <- parts[[k]]
-    group_vals <- df[match(k, grp_key), group_by, drop = FALSE]
+  result_list <- lapply(rows, function(r) {
+    u <- df$utility[r]
+    group_vals <- df[r[1L], group_by, drop = FALSE]
     row.names(group_vals) <- NULL
     cbind(group_vals, data.frame(
       Mean = mean(u, na.rm = TRUE),
@@ -1099,12 +1230,11 @@
     return(retval)
   }
 
-  grp_key <- do.call(paste, c(df[group_by], list(sep = "\001")))
-  parts <- split(df$utility, grp_key)
+  rows <- .group_rows(df, group_by)
 
-  result_list <- lapply(names(parts), function(k) {
-    u <- parts[[k]]
-    group_vals <- df[match(k, grp_key), group_by, drop = FALSE]
+  result_list <- lapply(rows, function(r) {
+    u <- df$utility[r]
+    group_vals <- df[r[1L], group_by, drop = FALSE]
     row.names(group_vals) <- NULL
     m <- mean(u)
     se <- sd(u) / sqrt(length(u))

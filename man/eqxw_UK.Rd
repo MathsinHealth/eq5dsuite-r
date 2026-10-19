@@ -31,9 +31,14 @@ accepted), as a vector or, when \code{x} is a data frame, a column name.}
 
 \item{dim.names}{A vector of dimension names to identify dimension columns.}
 
-\item{bwidth}{Kernel half-width, used only for value input. \code{0} (the
-default) matches values exactly. \code{"default"} applies the DSU's
-recommended bandwidths for mean values.}
+\item{bwidth}{Kernel half-width, used only for value input: a finite
+number of at least 0, or one per row. \code{0} (the default) matches
+values exactly. \code{"default"} applies the DSU's
+recommended bandwidths for mean values exactly as the DSU's own R command
+(April 2026 release) does: 0.1 for a value above 0.6 and 0.4 for a value
+of 0.6 or below. NICE's FAQ to its interim methods statement (PMG51)
+describes 0.6 itself as in the 0.1 range; the two differ only for a value
+of exactly 0.6, where a numeric \code{bwidth} can be given instead.}
 }
 \value{
 An unnamed numeric vector of mapped EQ-5D values, one per row of

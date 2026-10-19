@@ -90,7 +90,9 @@ test_that("a repeated state does not collapse or reorder", {
 })
 
 test_that("invalid and missing states stay in place as NA", {
-  r <- eq5d3l(c(11111, NA, 99999, 33333), country = "GB")
+  # 99999 is reported; a missing state is not (see test-paper-findings.R).
+  expect_warning(r <- eq5d3l(c(11111, NA, 99999, 33333), country = "GB"),
+                 "1 health state")
   expect_equal(r, c(1, NA, NA, -0.594), tolerance = 1e-7)
   expect_null(names(r))
 })

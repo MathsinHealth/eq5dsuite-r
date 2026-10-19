@@ -237,6 +237,16 @@
     if (length(bw) != n)
       stop(sprintf("[%s] `bwidth` must be length 1 or %d; got %d.",
                    .fname, n, length(bw)), call. = FALSE)
+    # A bandwidth is a finite, non-negative number. Inf weighted every state
+    # equally and returned a plausible-looking mean for any input, an
+    # invalid state code included; a negative one left the rows unmapped
+    # without saying why (review AI07).
+    bad <- !is.finite(bw) | bw < 0
+    if (any(bad))
+      stop(sprintf(paste0("[%s] `bwidth` must be a finite number of at least ",
+                          "0, or \"default\"; got %s."), .fname,
+                   paste(utils::head(unique(format(bw[bad])), 3L), collapse = ", ")),
+           call. = FALSE)
   }
   bw[!is.na(bw) & bw == 0] <- .NICE_BW_ZERO
   bw

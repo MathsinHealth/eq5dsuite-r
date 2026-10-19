@@ -44,6 +44,15 @@
   if (identical(v, "5L")) 5L else if (v %in% c("3L", "Y3L")) 3L else 9L
 }
 
+# The instrument named in an app mapping, normalised: NULL stays NULL (the
+# instrument is not known), and anything else must be "3L", "5L" or "Y3L" in
+# any case. An unsupported version used to be validated as a five-level
+# instrument without a word (review A17).
+.mapping_version <- function(v) {
+  if (is.null(v)) return(NULL)
+  .norm_version(v, arg = "eq5d_version")
+}
+
 # The level values of a dimension column, as numbers.
 .dim_levels <- function(v) .parse_number(v)
 
@@ -88,6 +97,43 @@
          paste(unique(dim.names[duplicated(key)]), collapse = ", "),
          "). Each dimension needs its own column.", call. = FALSE)
   invisible(dim.names)
+}
+
+# Where the five dimensions are among `available` names: one position per
+# entry of `dim.names`, which are checked first. Names are compared without
+# regard to case on both sides -- toEQ5Dindex()'s matrix branch lowercased both
+# but its named-vector branch only the data, eqxwr() only the data, and eq5d()
+# compared exactly, so the same explicit names worked in one scorer and not in
+# another (review A12). Numbers are positions. A name matching two columns
+# that differ only in case is ambiguous and an error, never a guess.
+.resolve_dims <- function(available, dim.names, what = "'x'", .fname = NULL) {
+  .check_dim_names(dim.names, .fname)
+  pre <- if (is.null(.fname)) "" else sprintf("[%s] ", .fname)
+  if (is.numeric(dim.names)) {
+    bad <- dim.names[!(dim.names == trunc(dim.names) & dim.names >= 1 &
+                       dim.names <= length(available))]
+    if (length(bad))
+      stop(pre, "Column position(s) ", paste(bad, collapse = ", "),
+           " not in ", what, ", which has ", length(available), " column(s).",
+           call. = FALSE)
+    return(as.integer(dim.names))
+  }
+  key  <- tolower(trimws(as.character(dim.names)))
+  have <- tolower(trimws(as.character(available)))
+  hits <- lapply(key, function(k) which(have == k))
+  n <- lengths(hits)
+  if (any(n == 0L))
+    stop(pre, "Required dimension name(s) not found in ", what, ": ",
+         paste(dim.names[n == 0L], collapse = ", "), ". Names are matched ",
+         "without regard to case; set `dim.names` to the names in your data.",
+         call. = FALSE)
+  if (any(n > 1L))
+    stop(pre, "Dimension name(s) ", paste(dim.names[n > 1L], collapse = ", "),
+         " match more than one column of ", what, " (",
+         paste(unique(available[unlist(hits[n > 1L])]), collapse = ", "),
+         "), which differ only in case. Rename one of them, or give ",
+         "`dim.names` as column positions.", call. = FALSE)
+  unlist(hits)
 }
 
 # Per-element verdict on a dimension column.
@@ -169,4 +215,25 @@
 
   if (isTRUE(rows) && anyNA(m)) m[rowSums(is.na(m)) > 0L, ] <- NA_integer_
   m
+}
+
+# Parse 5-digit state codes and set to NA, with one warning, every code that is
+# not a state of the instrument: a level above `top` (mo = 4, or a
+# missing-value code 9, in the EQ-5D-3L) used to become NA without a word in
+# the value functions, while the analysis functions report such levels.
+# `instrument` names the instrument in the message. Codes that are already NA,
+# or that .parse_states() rejects (with its own warning), are left alone.
+.validate_states <- function(x, top, instrument) {
+  x <- .parse_states(x)
+  pattern <- paste0("^[1-", top, "]{5}$")
+  outside <- !is.na(x) & !grepl(pattern, x)
+  if (any(outside)) {
+    shown <- utils::head(unique(x[outside]), 5L)
+    warning(sum(outside), " health state(s) are not valid ", instrument,
+            " states and have been set to NA: each of the five digits must be ",
+            "from 1 to ", top, " (e.g. ", paste(shown, collapse = ", "), ").",
+            call. = FALSE)
+    x[outside] <- NA
+  }
+  x
 }

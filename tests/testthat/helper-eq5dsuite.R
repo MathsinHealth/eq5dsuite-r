@@ -70,3 +70,6 @@ printed_messages <- function(expr) {
     type = "message"
   )
 }
+
+# Base R has `%||%` only from R 4.4; the package supports R 4.1.
+`%||%` <- function(x, y) if (is.null(x)) y else x

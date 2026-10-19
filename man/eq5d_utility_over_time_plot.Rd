@@ -30,6 +30,14 @@ Summary plot and data used for plotting
 \description{
 eq5d_utility_over_time_plot: EQ-5D values by timepoints: mean values and 95\% confidence intervals
 }
+\section{Confidence intervals}{
+
+The 95\% confidence interval of a mean is the mean plus or minus 1.96
+standard errors, the standard error being the standard deviation divided
+by the square root of the number of values: a normal approximation, which
+is less accurate for small groups.
+}
+
 \examples{
 example_data$value <- eq5d3l(example_data[, c("mo", "sc", "ua", "pd", "ad")],
                              country = "GB")

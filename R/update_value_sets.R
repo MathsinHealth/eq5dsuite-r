@@ -8,6 +8,14 @@
 # instrument, so this is the instrument name; see .eq5d_instrument().
 .vs_folder <- function(version) .eq5d_instrument(version)
 
+# Read a CSV file from the value sets repository. Every download goes through
+# here, with time limits, so a stalled connection cannot hang the session;
+# read.csv() opens the connection and closes it again (review AI02).
+.remote_csv <- function(url) {
+  h <- curl::new_handle(connecttimeout = 15, timeout = 60)
+  utils::read.csv(curl::curl(url, handle = h), stringsAsFactors = FALSE)
+}
+
 #' Fetch the index of available value sets from GitHub
 #'
 #' @param version Character. One of "3L", "5L", or "Y3L".
@@ -20,12 +28,7 @@ fetch_available_value_sets <- function(version) {
     .vs_folder(version),
     "/value_sets.csv"
   )
-  tryCatch({
-    utils::read.csv(
-      curl::curl(url),
-      stringsAsFactors = FALSE
-    )
-  },
+  tryCatch(.remote_csv(url),
   error = function(e) {
     message("eq5dsuite: Could not fetch value set index for ",
             version, ": ", conditionMessage(e))
@@ -126,12 +129,7 @@ install_value_set <- function(vs_code, version, meta_row) {
     .vs_folder(version), "/",
     vs_code, ".csv"
   )
-  vs_data <- tryCatch({
-    utils::read.csv(
-      curl::curl(url),
-      stringsAsFactors = FALSE
-    )
-  },
+  vs_data <- tryCatch(.remote_csv(url),
   error = function(e) {
     message("eq5dsuite: Could not download ", vs_code,
             ": ", conditionMessage(e))
@@ -159,7 +157,7 @@ install_value_set <- function(vs_code, version, meta_row) {
   }
   
   tryCatch({
-    eqvs_add(
+    res <- eqvs_add(
       vs_data,
       version     = version,
       country     = meta_row$Name,
@@ -168,6 +166,14 @@ install_value_set <- function(vs_code, version, meta_row) {
       description = paste0("doi:", meta_row$doi),
       saveOption  = 2
     )
+    # eqvs_add() returns 0, with a warning, when the code is already one of
+    # the user's own value sets, and adds nothing. That was counted as an
+    # installation (review AI02).
+    if (identical(res, 0)) {
+      message("eq5dsuite: Could not install ", vs_code, ": the code is ",
+              "already used by one of your own value sets.")
+      return(FALSE)
+    }
     TRUE
   },
   error = function(e) {
@@ -447,7 +453,10 @@ check_builtin_conflicts <- function(version) {
 #' and installing new value sets. Drop and rename operations
 #' work offline.
 #'
-#' @param versions Character vector. Which instruments to check.
+#' @param versions Character vector. Which instruments to check: any of
+#'   \code{"3L"}, \code{"5L"} and \code{"Y3L"}, in any case. The date of the
+#'   last check, which decides when you are reminded to check again, moves only
+#'   when all three are checked.
 #'   Defaults to c("3L", "5L", "Y3L").
 #' @param ask Logical. Whether to ask for confirmation before
 #'   installing, dropping, or renaming. Defaults to TRUE.
@@ -516,6 +525,14 @@ update_value_sets <- function(versions = c("3L", "5L", "Y3L"),
          "Value sets are shared by every session on the server, so they are ",
          "updated by whoever maintains the deployment, not from the app.",
          call. = FALSE)
+
+  # Normalised here, as everywhere else: "5l" was not recognised, and an
+  # unknown version was only noticed deep in the installer (review AI02).
+  if (!is.character(versions) || !length(versions))
+    stop("Argument 'versions' must name at least one instrument: ",
+         paste(.cache_versions, collapse = ", "), ".", call. = FALSE)
+  versions <- unique(vapply(versions, .norm_version, character(1L),
+                            arg = "versions", USE.NAMES = FALSE))
 
   dropped  <- character(0)
   renamed  <- character(0)
@@ -603,6 +620,16 @@ update_value_sets <- function(versions = c("3L", "5L", "Y3L"),
     "eq5dsuite: The date of the last check was not updated, so you will ",
     "be reminded again. Run update_value_sets() later to try again.")
 
+  # The reminder date is one date for every instrument, so it moves only
+  # when every instrument was checked: a check of the EQ-5D-5L alone used to
+  # silence the reminder for the EQ-5D-3L and EQ-5D-Y-3L too (review AI02).
+  all_checked_versions <- function() all(.cache_versions %in% checked)
+  partial_note <- paste0(
+    "eq5dsuite: Only ", paste0("EQ-5D-", versions, collapse = ", "),
+    if (length(versions) == 1L) " was" else " were",
+    " checked, so the date of the last check was not updated. Run ",
+    "update_value_sets() without `versions` to check every instrument.")
+
   if (!.has_internet()) {
     message("eq5dsuite: No internet connection available. ",
             "No value sets were checked.")
@@ -634,8 +661,10 @@ update_value_sets <- function(versions = c("3L", "5L", "Y3L"),
     available <- idx$data
 
     installed_codes <- get_installed_vs_codes(version)
-    new_codes       <- setdiff(available$VS_code,
-                               installed_codes)
+    # Compared without regard to case, as codes are looked up: an installed
+    # "GB" listed as "gb" is not new (review AI02).
+    new_codes <- unique(available$VS_code[
+      !toupper(available$VS_code) %in% toupper(installed_codes)])
 
     if (length(new_codes) == 0) {
       message("eq5dsuite: EQ-5D-", version,
@@ -654,6 +683,8 @@ update_value_sets <- function(versions = c("3L", "5L", "Y3L"),
     all_new[[version]] <- new_rows
   }
 
+  all_checked <- all_checked_versions()
+
   conflict_note <- if (length(mig_conflicts))
     paste0(" ", length(mig_conflicts), " value set rename(s) could not be ",
            "applied because both codes are installed: ",
@@ -661,8 +692,9 @@ update_value_sets <- function(versions = c("3L", "5L", "Y3L"),
 
   if (length(all_new) == 0) {
     if (length(failed) == 0L && !length(mig_conflicts)) {
-      message("\neq5dsuite: All value sets are up to date.")
-      set_last_checked()
+      message("\neq5dsuite: All value sets are up to date.",
+              if (!all_checked) paste0("\n", partial_note))
+      if (all_checked) set_last_checked()
     } else if (length(failed) == 0L) {
       message("\neq5dsuite: No new value sets.", conflict_note, "\n",
               not_recorded)
@@ -718,7 +750,8 @@ update_value_sets <- function(versions = c("3L", "5L", "Y3L"),
 
   complete <- length(failed) == 0L && length(install_failed) == 0L &&
     !length(mig_conflicts)
-  if (complete) set_last_checked()
+  if (complete && all_checked) set_last_checked()
+  if (complete && !all_checked) message(partial_note)
   message("\neq5dsuite: ",
           if (complete) "Update complete. " else "Update incomplete. ",
           length(all_installed), " value set(s) installed.",

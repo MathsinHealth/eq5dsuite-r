@@ -86,7 +86,8 @@ test_that("values can be calculated from a user-defined Y3L value set", {
   expect_equal(unname(all_vals), vs$MYY)
 
   # Five-level states are not valid for a three-level instrument.
-  expect_true(is.na(unname(eq5dy3l(55555, country = "MYY"))))
+  expect_warning(v <- eq5dy3l(55555, country = "MYY"), "not valid EQ-5D-Y-3L states")
+  expect_true(is.na(unname(v)))
 })
 
 test_that("a user-defined Y3L value set survives a save and reload", {

@@ -123,8 +123,13 @@ test_that("several value sets at once give one column each", {
 test_that("invalid states come back as NA, in place", {
   xw_env()
   # 55555 is not an EQ-5D-3L state, so the reverse crosswalk cannot take it.
-  expect_identical(eqxwr(c(11111, 55555, 33333), country = "GB")[2], NA_real_)
+  # It is reported, not silently dropped (see test-paper-findings.R).
+  expect_warning(r <- eqxwr(c(11111, 55555, 33333), country = "GB"),
+                 "not valid EQ-5D-3L states")
+  expect_identical(r[2], NA_real_)
   # 66666 is not a state of either instrument.
-  expect_identical(eqxw(c(11111, 66666), country = "GB")[2], NA_real_)
-  expect_null(names(eqxw(c(11111, 66666), country = "GB")))
+  expect_warning(r <- eqxw(c(11111, 66666), country = "GB"),
+                 "not valid EQ-5D-5L states")
+  expect_identical(r[2], NA_real_)
+  expect_null(names(r))
 })

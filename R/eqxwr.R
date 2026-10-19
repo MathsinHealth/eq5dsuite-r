@@ -70,6 +70,7 @@
 #' @references van Hout B, Shaw JW (2021). Mapping EQ-5D-3L to EQ-5D-5L.
 #'   \emph{Value in Health} 24(9):1285-1293. \doi{10.1016/j.jval.2021.03.009}
 #' @seealso \code{\link{eqxwr_UK}}, \code{\link{eqxw}}
+#' @inheritSection eq5d Missing and invalid responses
 #' @examples 
 #' eqxwr(c(11111, 12321, 32123, 33333), 'US')
 #' eqxwr(make_all_EQ_states('3L'), c('DK', 'US'))
@@ -78,7 +79,6 @@ eqxwr <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad")
   pkgenv <- getOption("eq.env")
   if(!length(dim.names) == 5) stop("Argument dim.names not of length 5.")
   if(length(dim(x)) == 2) {
-    colnames(x) <- tolower(colnames(x))
     if(is.null(colnames(x))) {
       message("No column names")
       if(NCOL(x) == 5) {
@@ -86,8 +86,10 @@ eqxwr <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad")
         colnames(x) <- dim.names
       } 
     }
-    if(!all(dim.names %in% colnames(x))) stop("Provided dimension names not available in matrix/data.frame.")
-    x <- toEQ5Dindex(x = x, dim.names = dim.names)
+    # Columns are found by toEQ5Dindex(), as in eq5d(). Lowercasing the data
+    # but not dim.names refused upper-case names that were exactly the
+    # column names (review A12).
+    x <- toEQ5Dindex(x = x, dim.names = dim.names, quiet = TRUE)
   }
   
   country <- .fixCountries(country)
@@ -103,8 +105,8 @@ eqxwr <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad")
     stop('No valid countries listed.')
   }
   
-  x <- .parse_states(x)
-  x[!regexpr("^[1-3]{5}$", x)==1] <- NA
+  # A code outside the EQ-5D-3L is NA with a warning (see .validate_states()).
+  x <- .validate_states(x, top = 3L, instrument = "EQ-5D-3L")
   
   if(length(country)>1) {
     names(country) <- country
@@ -174,9 +176,14 @@ eqxwr <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad")
 #' @param male 1 for male and 0 for female (\code{TRUE}/\code{FALSE} are
 #'   accepted), as a vector or, when \code{x} is a data frame, a column name.
 #' @param dim.names A vector of dimension names to identify dimension columns.
-#' @param bwidth Kernel half-width, used only for value input. \code{0} (the
-#'   default) matches values exactly. \code{"default"} applies the DSU's
-#'   recommended bandwidths for mean values.
+#' @param bwidth Kernel half-width, used only for value input: a finite
+#'   number of at least 0, or one per row. \code{0} (the default) matches
+#'   values exactly. \code{"default"} applies the DSU's
+#'   recommended bandwidths for mean values exactly as the DSU's own R command
+#'   (April 2026 release) does: 0.1 for a value above 0.6 and 0.4 for a value
+#'   of 0.6 or below. NICE's FAQ to its interim methods statement (PMG51)
+#'   describes 0.6 itself as in the 0.1 range; the two differ only for a value
+#'   of exactly 0.6, where a numeric \code{bwidth} can be given instead.
 #' @return An unnamed numeric vector of mapped EQ-5D values, one per row of
 #'   \code{x} and in the same order.
 #' @references

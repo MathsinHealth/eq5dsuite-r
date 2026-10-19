@@ -29,6 +29,27 @@ A numeric vector of EQ-5D-3L values, or a data.frame with one column
 Get EQ-5D-3L index values from individual responses to the five
 dimensions of the EQ-5D-3L.
 }
+\section{Missing and invalid responses}{
+
+Each health state is checked before it is scored, and a state that cannot
+be scored gives \code{NA} for that element or row; the others are scored
+as usual.
+\itemize{
+  \item A missing response (\code{NA} in any dimension, or an \code{NA}
+    state index) gives \code{NA} without a warning.
+  \item An invalid response gives \code{NA} with a warning, which gives
+    the number of such states and examples. Invalid means a level the
+    instrument does not have (for example \code{4} in the EQ-5D-3L, or a
+    missing-value code such as \code{9}), a level or index that is not a
+    whole, finite number, or an index that is not five digits long.
+    Each problem is reported once, however many value sets are requested.
+  \item State indexes and levels given as text or as factors are read
+    through their labels, so \code{"21111"} and \code{factor(2)} are
+    scored as \code{21111} and \code{2}.
+}
+Recode missing-value codes to \code{NA} first if the warning is not wanted.
+}
+
 \examples{
 # Example 1: utility values from EQ-5D-3L profile codes
 eq5d3l(c(11111, 12321, 32123, 33333), country = "US")

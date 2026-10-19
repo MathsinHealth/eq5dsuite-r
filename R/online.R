@@ -231,8 +231,11 @@ eq5d_online_notice <- function(which = c("data", "upload", "local")) {
 #' A whole \code{app.R} for a server is one line:
 #'
 #' \preformatted{
-#' eq5dsuite::eq5d_app(online = TRUE)
+#' eq5dsuite:::eq5d_app(online = TRUE)
 #' }
+#'
+#' Three colons, because \code{eq5d_app()} is internal: with two the server
+#' cannot find it. \code{DEPLOY.md} says the same.
 #'
 #' The settings this puts in force -- the upload limit and error sanitising --
 #' stay in force for the R process that serves the app, which is what a

@@ -75,6 +75,10 @@ suggest_mapping <- function(col_names) {
 
 # Add a synthetic "groupvar" of "All" when no group column is mapped, so the
 # by-group analyses still run on ungrouped data.
+# Whether an optional package is installed. A function of its own so the
+# tests can replace it.
+has_package <- function(pkg) requireNamespace(pkg, quietly = TRUE)
+
 ensure_groupvar <- function(df) {
   if (!"groupvar" %in% names(df)) df[["groupvar"]] <- "All"
   df
@@ -298,9 +302,12 @@ result_icon <- function(result_type) {
 #' Get version-aware utility method choices for the UI
 #'
 #' The direction of every mapping follows the instrument version set on the
-#' Data page, so each label states it.
+#' Data page, so each label states it. The EQ-5D-Y-3L has no crosswalk or
+#' mapping, so its data are valued only with its own value sets.
 get_utility_method_choices <- function(eq5d_version) {
-  if (identical(eq5d_version, "3L")) {
+  if (identical(eq5d_version, "Y3L")) {
+    c("Direct (Y-3L value set)" = "direct")
+  } else if (identical(eq5d_version, "3L")) {
     c(
       "Direct (3L value set)"              = "direct",
       "Reverse crosswalk 3L→5L (XWR)" = "xwr",
@@ -341,6 +348,10 @@ uk_direction <- function(eq5d_version) {
   else
     list(fn = "eqxw_UK", from = "EQ-5D-5L", to = "EQ-5D-3L", col = "eq5d_uk_3L")
 }
+
+#' The instrument's name, for labels: "3L" -> "EQ-5D-3L", "Y3L" -> "EQ-5D-Y-3L"
+instrument_label <- function(eq5d_version)
+  eq5dsuite:::.eq5d_instrument(eq5d_version)
 
 #' Get available value-set country codes for a given EQ-5D version
 get_country_choices <- function(eq5d_version) {

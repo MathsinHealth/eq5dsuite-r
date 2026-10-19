@@ -23,9 +23,10 @@ mod_home_ui <- function(id) {
       "then produces the analyses set out in Devlin, Parkin and Janssen ",
       "(2020), ",
       shiny::tags$em("Methods for Analyzing and Reporting EQ-5D Data"),
-      " — health profiles, EQ-5D values and the EQ VAS — calculates ",
-      "EQ-5D values from any published value set, and maps between the ",
-      "EQ-5D-3L and EQ-5D-5L. Every result is shown alongside the ",
+      " — health profiles, EQ-5D values and the EQ VAS — for the ",
+      "EQ-5D-3L, EQ-5D-5L and EQ-5D-Y-3L. It calculates EQ-5D values from ",
+      "any published value set, and maps between the EQ-5D-3L and ",
+      "EQ-5D-5L. Every result is shown alongside the ",
       shiny::code("eq5dsuite", .noWS = "outside"),
       " R code that produced it, so any analysis ",
       "can be reproduced outside the app."
@@ -46,8 +47,8 @@ mod_home_ui <- function(id) {
     shiny::p(
       shiny::tags$strong("Required"), " — the five EQ-5D dimensions: ",
       "mobility, self-care, usual activities, pain/discomfort and ",
-      "anxiety/depression, as EQ-5D-3L (levels 1–3) or EQ-5D-5L ",
-      "(levels 1–5)."
+      "anxiety/depression, as EQ-5D-3L or EQ-5D-Y-3L (levels 1–3), or ",
+      "EQ-5D-5L (levels 1–5)."
     ),
     shiny::p(shiny::tags$strong("Optional", .noWS = "outside"),
              ", each one unlocking more analyses:"),

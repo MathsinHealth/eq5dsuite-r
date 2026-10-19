@@ -38,12 +38,8 @@ toEQ5Dindex <- function(
   # ── 3. Matrix / data.frame branch (vectorised) ───────────────────────────
   if (length(dim(x)) == 2L) {
     
-    # Normalise column names to lower-case
-    dim.names <- tolower(dim.names)
-    if (!is.null(colnames(x))) colnames(x) <- tolower(colnames(x))
-    
     # Assign default names if none present
-    if (is.null(colnames(x))) {
+    if (is.null(colnames(x)) && !is.numeric(dim.names)) {
       if (ncol(x) == 5L) {
         msg("No column names found; assuming conventional order: ",
             paste(toupper(dim.names), collapse = ", "), ".")
@@ -55,17 +51,16 @@ toEQ5Dindex <- function(
       }
     }
     
-    missing_cols <- setdiff(dim.names, colnames(x))
-    if (length(missing_cols))
-      stop("Required dimension column(s) not found in 'x': ",
-           paste(missing_cols, collapse = ", "), ".")
+    # The columns, matched as every scorer matches them (.resolve_dims()).
+    cn  <- if (is.null(colnames(x))) character(ncol(x)) else colnames(x)
+    pos <- .resolve_dims(cn, dim.names)
     
     # Validate before encoding, not after. mode(m) <- "integer" truncated
     # 1.9 to level 1, and a value of 11 carried into the dimension beside it:
     # c(0, 11, 1, 1, 1) encoded as 11111 and scored as full health. See
     # .clean_dim_matrix() in R/validate_dims.R. The instrument is not known
     # here, so the bound is the digit bound the encoding itself requires.
-    m <- .clean_dim_matrix(x[, dim.names, drop = FALSE], max_level = NULL)
+    m <- .clean_dim_matrix(x[, pos, drop = FALSE], max_level = NULL)
     
     # NA handling
     if (!na.rm && anyNA(m)) {
@@ -96,16 +91,9 @@ toEQ5Dindex <- function(
       stop("'x' has no names and length != 5. ",
            "Provide a named vector or a data.frame/matrix.")
     }
-  } else {
-    names(x) <- tolower(names(x))
   }
   
-  missing_names <- setdiff(dim.names, names(x))
-  if (length(missing_names))
-    stop("Required dimension name(s) not found in 'x': ",
-         paste(missing_names, collapse = ", "), ".")
-  
-  vals <- x[dim.names]
+  vals <- x[.resolve_dims(names(x), dim.names)]
   # The same validation as the matrix branch, so a named vector and a
   # one-row data frame of the same values cannot disagree.
   st <- .dim_status(vals, max_level = NULL)
@@ -124,7 +112,10 @@ toEQ5Dindex <- function(
 #' @description Generate dimension vectors based on state index
 #' @param x A vector of 5-digit EQ-5D state indexes.
 #' @param dim.names A vector of dimension names to be used as names for output columns.
-#' @return A data.frame with 5 columns, one for each EQ-5D dimension, with names from dim.names argument.
+#' @return A data.frame with 5 integer columns, one for each EQ-5D dimension,
+#'   with names from the dim.names argument; the same layout as the output of
+#'   \code{make_all_EQ_states()}. A code that is not a valid 5-digit state gives
+#'   \code{NA} in every column, with a warning.
 #' @examples 
 #' toEQ5Ddims(c(12345, 54321, 12321))
 #' @export
@@ -135,7 +126,11 @@ toEQ5Ddims <- function(x, dim.names = c("mo", "sc", "ua", "pd", "ad")) {
   # Remove items outside of bounds
   x[!regexpr("^[1-5]{5}$", x)==1] <- NA
   if(sum(is.na(x))) warning(paste0("Provided vector contained ", sum(is.na(x)), " items not conforming to 5-digit numbers with exclusively digits in the 1-5 range."))
-  as.data.frame(outer(X = x, Y = structure(.Data = 10^(4:0), names = dim.names), FUN = "%/%") %% 10)
+  out <- as.data.frame(outer(X = x, Y = structure(.Data = 10^(4:0), names = dim.names), FUN = "%/%") %% 10)
+  # Integer columns, as make_all_EQ_states() returns: the levels are whole
+  # numbers, and the two are documented as having the same layout.
+  out[] <- lapply(out, as.integer)
+  out
 }
 
 #' @title make_all_EQ_states
@@ -189,7 +184,12 @@ make_all_EQ_indexes <- function(version = "5L", dim.names = c("mo", "sc", "ua", 
 #' @param append Optional string to be appended to column names.
 #' @param prepend Optional string to be prepended to column names.
 #' @param return_df If set to TRUE, data.frame is returned, otherwise matrix. Defaults to TRUE.
-#' @return A data.frame of dummy variables 
+#' @return A data.frame of dummy variables, one row per row of \code{df}.
+#'   Levels are read as the value functions read them: text and factors
+#'   through their labels. A level the instrument does not have (fractional,
+#'   0, negative, non-finite or above the highest level) is not a level, so
+#'   that dimension's dummies are \code{NA}, with a warning; a missing level
+#'   gives \code{NA} dummies without one.
 #' @examples 
 #' make_dummies(make_all_EQ_states('3L'), '3L')
 #' 
@@ -211,6 +211,7 @@ make_dummies <- function(df,
   
   if (!length(dim.names) == 5) 
     stop("Argument dim.names not of length 5.")
+  .check_dim_names(dim.names, "make_dummies")
   if (!length(dim(df) == 2)) 
     stop("Need to provide matrix or data.frame of 2 dimensions.")
   # A matrix is documented as acceptable input, but the column extraction
@@ -271,8 +272,18 @@ make_dummies <- function(df,
   # laid the five dimensions out as five columns instead of one row of
   # dummies, and naming those columns failed with "length of 'dimnames' [2]
   # not equal to array extent".
-  tmpout <- do.call(cbind, lapply(col_map, function(col) {
-    tmp[df[[col]], , drop = FALSE]
+  #
+  # The levels are read with the package's shared parser before they index
+  # anything. Used directly as subscripts, a factor indexed by its level code
+  # (factor("3") is code 1, so level 3 came out as level 1) and 1.9 was
+  # truncated to 1, both silently; 0 or a negative number dropped or excluded
+  # rows. A level the instrument does not have is now NA, so its dimension's
+  # dummies are NA, with one warning -- never a valid level, and never the
+  # reference category's zeros (review A01).
+  lev <- .clean_dim_matrix(df[, unname(col_map), drop = FALSE],
+                           max_level = vers, what = "value")
+  tmpout <- do.call(cbind, lapply(seq_along(col_map), function(j) {
+    tmp[lev[, j], , drop = FALSE]
   }))
   
   colnames(tmpout) <- as.vector(
@@ -290,6 +301,30 @@ make_dummies <- function(df,
 
 #' @title eqvs_add
 #' @description Add user-defined EQ-5D value set and corresponding crosswalk option.
+#' @details
+#' Every check below is made before anything is changed, so a value set that
+#' fails one is not added, in part or in full, and nothing is saved.
+#' \itemize{
+#'   \item \code{df}, if a file name, must name an existing csv file, and must
+#'     have exactly two columns.
+#'   \item It must have exactly one row per health state of the instrument
+#'     (3,125 for the EQ-5D-5L, 243 for the EQ-5D-3L and EQ-5D-Y-3L), and every
+#'     state must be present exactly once. The rows may be in any order, and the
+#'     states may be given as numbers, text or factors; they must be whole
+#'     numbers, so \code{11111.9} is refused rather than read as \code{11111}.
+#'   \item The value set code (\code{VSCode}, or the name of the second column)
+#'     must not be a built-in value set code, compared without regard to case
+#'     and across all three instruments; this is an error. If it is the code of
+#'     one of your own value sets for the same instrument, again without regard
+#'     to case, the function warns and returns \code{0} without adding it.
+#'   \item Every value must be numeric and finite: \code{NA}, \code{NaN},
+#'     text, \code{Inf} and \code{-Inf} are errors.
+#'   \item With \code{saveOption = 3}, \code{savePath} must name an existing
+#'     directory. With \code{saveOption = 2} or \code{3}, if the cache cannot
+#'     be saved, the value set is removed again.
+#' }
+#' The values themselves are not checked further: nothing requires full health
+#' (\code{11111}) to be 1, or the values to fall as the levels worsen.
 #' @param df A data.frame or file name pointing to csv file. The contents of the data.frame or csv file should be exactly two columns: state, containing a list of all 3125 (for 5L) or 243 (for 3L and Y3L) EQ-5D health state vectors, and a column of corresponding utility values, with a suitable name. The EQ-5D-Y-3L uses the same 243 health states as the EQ-5D-3L.
 #' @param version Version of the EQ-5D instrument. Can take values 5L (default), 3L or Y3L. Matching is case-insensitive.
 #' @param country Optional string. If not NULL, will be used as a country description for the user-defined value set.
@@ -310,7 +345,10 @@ make_dummies <- function(df,
 #'   3: Save in the directory given by \code{savePath}, to be read back with
 #'   \code{eqvs_load()}.
 #' @param savePath A path where the cache data should be saved when `saveOption` is 3. Please use `eqvs_load` to load it in your next session.
-#' @return True/False, indicating success or error.
+#' @return Called for its side effect. When the value set is added,
+#'   \code{NULL}, invisibly, with a message. When \code{VSCode} is already
+#'   used by one of your own value sets for this instrument, \code{0}, with a
+#'   warning, and nothing is added.
 #' @examples
 #' # Make a nonsense value set. The values are a plain sequence rather than
 #' # runif(), which would move the random seed of whoever runs the example.
@@ -346,7 +384,24 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
     df <- utils::read.csv(file = df, stringsAsFactors = F)
   } 
   if(!NCOL(df) == 2) stop('df should have exactly two columns.')
-  class(df[, 1]) <- 'integer'
+  # The state codes are checked as numbers before they become integers.
+  # class<- 'integer' truncated them, so 11111.9 became the state 11111 and a
+  # set of codes that were not states was accepted (review A11). Text and
+  # factors are read through their labels.
+  keys <- .parse_number(df[, 1])
+  badk <- is.na(keys) | !is.finite(keys) | keys != trunc(keys)
+  if (any(badk))
+    stop("The first column of df must hold whole health state codes, such as ",
+         "11111; ", sum(badk), " do not (e.g. ",
+         paste(utils::head(unique(as.character(df[badk, 1])), 3L), collapse = ", "),
+         "). Fractional codes are not truncated to a state.", call. = FALSE)
+  df[, 1] <- as.integer(keys)
+  if (anyDuplicated(df[, 1]))
+    stop("Each health state must appear exactly once in the first column of ",
+         "df; ", length(unique(df[duplicated(df[, 1]), 1])), " appear more ",
+         "than once (e.g. ",
+         paste(utils::head(unique(df[duplicated(df[, 1]), 1]), 3L), collapse = ", "),
+         ").", call. = FALSE)
   
   # read off version-dependent parameters
   j <- if (version == "5L") 5 else 3
@@ -423,6 +478,17 @@ eqvs_add <- function(df, version = "5L", country = NULL, countryCode = NULL, VSC
   }
   
   if(any(is.na(df[,2]*-1.1))) stop("Non-numeric values in second column of df.")
+  # Inf and -Inf passed the check above. A value set holding one scored that
+  # state as infinite for the rest of the session, and when saved it was
+  # dropped on the next load, because the cache check refuses non-finite
+  # values -- so it is refused here, before anything is changed.
+  if (!all(is.finite(as.numeric(df[,2])))) {
+    nf <- which(!is.finite(as.numeric(df[,2])))
+    stop("Values in the second column of df are not finite (Inf or -Inf) for ",
+         length(nf), " health state(s), e.g. ",
+         paste(utils::head(df[nf, 1], 3L), collapse = ", "),
+         ". Every value must be a finite number.", call. = FALSE)
+  }
 
   # ── F13: everything that can fail is checked before anything is changed ──
   #
@@ -838,6 +904,24 @@ eqvs_display <- function(version       = "5L",
 #' @return A numeric vector of values, or a data.frame with one column for
 #'   each value set requested. The result is an unnamed numeric vector, one element per
 #'   element or row of \code{x} and in the same order.
+#' @section Missing and invalid responses:
+#' Each health state is checked before it is scored, and a state that cannot
+#' be scored gives \code{NA} for that element or row; the others are scored
+#' as usual.
+#' \itemize{
+#'   \item A missing response (\code{NA} in any dimension, or an \code{NA}
+#'     state index) gives \code{NA} without a warning.
+#'   \item An invalid response gives \code{NA} with a warning, which gives
+#'     the number of such states and examples. Invalid means a level the
+#'     instrument does not have (for example \code{4} in the EQ-5D-3L, or a
+#'     missing-value code such as \code{9}), a level or index that is not a
+#'     whole, finite number, or an index that is not five digits long.
+#'     Each problem is reported once, however many value sets are requested.
+#'   \item State indexes and levels given as text or as factors are read
+#'     through their labels, so \code{"21111"} and \code{factor(2)} are
+#'     scored as \code{21111} and \code{2}.
+#' }
+#' Recode missing-value codes to \code{NA} first if the warning is not wanted.
 #' @examples 
 #' # US -3L value set
 #' eq5d(c(11111, 12321, 32123, 33333), 'US', '3L') 
@@ -867,10 +951,21 @@ eq5d <- function(x, country = NULL, version = '5L', dim.names = c("mo", "sc", "u
         colnames(x) <- dim.names
       }
     }
-    if (!all(dim.names %in% colnames(x))) stop("Provided dimension names not found in input matrix/data.frame.")
-    x <- toEQ5Dindex(x = x, dim.names = dim.names)
+    # toEQ5Dindex() finds the columns (.resolve_dims()), as every scorer
+    # does; an exact-match check here refused names it would have accepted.
+    x <- toEQ5Dindex(x = x, dim.names = dim.names, quiet = TRUE)
   }
-  
+
+  # Validate the state codes once, here, before the value sets are split up
+  # below: done after the split, every problem was reported once per value
+  # set. A code outside the instrument -- mo = 4, or a missing-value code 9,
+  # in the EQ-5D-3L -- used to become NA without a word; it is now reported,
+  # as the analysis functions report such levels.
+  x <- .validate_states(
+    x, top = if (version %in% c('3L', 'Y3L', 'XWR')) 3L else 5L,
+    instrument = c('3L' = "EQ-5D-3L", '5L' = "EQ-5D-5L", 'Y3L' = "EQ-5D-Y-3L",
+                   'XW' = "EQ-5D-5L", 'XWR' = "EQ-5D-3L")[[version]])
+
   country <- .fixCountries(country, EQvariant = vers)
   
   # Handle cases where the country input is invalid
@@ -892,11 +987,7 @@ eq5d <- function(x, country = NULL, version = '5L', dim.names = c("mo", "sc", "u
     return(do.call(cbind, lapply(country, function(count) eq5d(x, count, version, dim.names))))
   }
   
-  # Validate and match states
-  xorig <- x
-  x <- .parse_states(x)
-  pattern <- if (version %in% c('3L', 'Y3L', 'XWR')) "^[1-3]{5}$" else "^[1-5]{5}$"
-  x[!grepl(pattern, x)] <- NA
+  # Match states. The codes were validated above; NA stays NA.
   
   # Select the appropriate value set and state mapping
   vset <- switch(version,
@@ -940,6 +1031,7 @@ eq5d <- function(x, country = NULL, version = '5L', dim.names = c("mo", "sc", "u
 #' @return A numeric vector of EQ-5D-3L values, or a data.frame with one column
 #'   for each requested value set. The result is an unnamed numeric vector, one element per
 #'   element or row of \code{x} and in the same order.
+#' @inheritSection eq5d Missing and invalid responses
 #' @examples
 #' # Example 1: utility values from EQ-5D-3L profile codes
 #' eq5d3l(c(11111, 12321, 32123, 33333), country = "US")
@@ -998,6 +1090,7 @@ eq5d3l <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"
 #'   for each requested value set. The result is an unnamed numeric vector, one element per
 #'   element or row of \code{x} and in the same order.
 #'
+#' @inheritSection eq5d Missing and invalid responses
 #' @examples
 #' # Example 1: utility values from EQ-5D-5L profile codes
 #' eq5d5l(c(11111, 12321, 32423, 55555), country = "IT")
@@ -1054,6 +1147,7 @@ eq5d5l <- function(x, country = NULL, dim.names = c("mo", "sc", "ua", "pd", "ad"
 #' @return A numeric vector of EQ-5D-Y-3L values, or a data.frame with one
 #'   column for each requested value set. The result is an unnamed numeric vector, one element per
 #'   element or row of \code{x} and in the same order.
+#' @inheritSection eq5d Missing and invalid responses
 #' @examples
 #' # Example 1: utility values from EQ-5D-Y-3L profile codes
 #' eq5dy3l(x = c(11111, 12321, 33333), country = "SI")

@@ -59,6 +59,7 @@ Suggests:
     withr,
     knitr,
     rmarkdown,
+    writexl,
     zip
 VignetteBuilder: knitr
 Config/testthat/edition: 3

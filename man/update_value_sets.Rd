@@ -12,7 +12,10 @@ update_value_sets(
 )
 }
 \arguments{
-\item{versions}{Character vector. Which instruments to check.
+\item{versions}{Character vector. Which instruments to check: any of
+\code{"3L"}, \code{"5L"} and \code{"Y3L"}, in any case. The date of the
+last check, which decides when you are reminded to check again, moves only
+when all three are checked.
 Defaults to c("3L", "5L", "Y3L").}
 
 \item{ask}{Logical. Whether to ask for confirmation before

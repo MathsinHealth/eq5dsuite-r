@@ -275,7 +275,10 @@
   # scoring, because the combined table is built by joining on `state` and a
   # degenerate key set collapses it.
   canonical <- make_all_EQ_indexes(version = if (version == "5L") "5L" else "3L")
-  keys <- suppressWarnings(as.integer(x$state))
+  # Whole numbers before integers: as.integer() truncated 11111.5 to the
+  # state 11111 (review A11).
+  keys <- .parse_number(x$state)
+  keys[!is.finite(keys) | keys != trunc(keys)] <- NA
   if (anyNA(keys))
     return(paste0(what, " has ", sum(is.na(keys)),
                   " state key(s) that are not health state codes."))
@@ -320,7 +323,7 @@
 .canonicalise_uservsets <- function(x, version) {
   if (is.null(x) || !is.data.frame(x) || !nrow(x)) return(x)
   canonical <- make_all_EQ_indexes(version = if (version == "5L") "5L" else "3L")
-  ord <- match(canonical, suppressWarnings(as.integer(x$state)))
+  ord <- match(canonical, .parse_number(x$state))
   if (anyNA(ord)) return(x)        # validation will already have rejected it
   out <- x[ord, , drop = FALSE]
   rownames(out) <- NULL
@@ -414,21 +417,25 @@
   # ---- schema version -----------------------------------------------------
   if (exists("cache_schema_version", envir = tmp, inherits = FALSE)) {
     schema <- get("cache_schema_version", envir = tmp, inherits = FALSE)
-    if (!is.numeric(schema) || length(schema) != 1L || is.na(schema))
-      return(reject("Its schema version is not a single number."))
+    # Checked as a number before it becomes an integer: as.integer(Inf) is NA,
+    # and the comparison below then failed with an error that stopped the
+    # package from loading; 2.9 was read as 2, and 0 or -1 as an old schema
+    # (review A10).
+    if (!is.numeric(schema) || length(schema) != 1L || !is.finite(schema) ||
+        schema != trunc(schema) || schema < 1)
+      return(reject("Its schema version is not a whole number of at least 1."))
+    if (schema > .cache_schema_version)
+      return(reject(paste0(
+        "It was written with cache schema version ", format(schema),
+        ", but this version of eq5dsuite understands at most version ",
+        .cache_schema_version,
+        ". This usually means it was written by a newer eq5dsuite; ",
+        "upgrading the package should make it readable again."), schema))
     schema <- as.integer(schema)
   } else {
     # Unstamped: written before schema versioning was introduced.
     schema <- 1L
   }
-
-  if (schema > .cache_schema_version)
-    return(reject(paste0(
-      "It was written with cache schema version ", schema,
-      ", but this version of eq5dsuite understands at most version ",
-      .cache_schema_version,
-      ". This usually means it was written by a newer eq5dsuite; ",
-      "upgrading the package should make it readable again."), schema)) 
 
   # ---- extract and migrate the user's objects -----------------------------
   objects <- list()
@@ -544,7 +551,15 @@
   cache_file <- .find_cache_file(cache_path)
   if (is.null(cache_file)) return(invisible(NULL))
 
-  res <- .read_cache(cache_file)
+  # .read_cache() reports every problem it knows of as a rejection. Anything
+  # it did not foresee is one too: an error here would stop the package from
+  # loading, which is worse than ignoring the cache (review A10).
+  res <- tryCatch(.read_cache(cache_file), error = function(e) list(
+    status = "reject", objects = NULL, schema = "unknown",
+    message = paste0("eq5dsuite: the value set cache at '", cache_file,
+                     "' could not be used and has been ignored.\n  It could ",
+                     "not be checked: ", conditionMessage(e), "\n  The file ",
+                     "has been left unchanged.")))
 
   if (identical(res$status, "reject")) {
     # Remember the file so a later save backs it up instead of silently
@@ -661,6 +676,15 @@
     load(tmpfile, envir = probe)
     if (!length(ls(probe, all.names = TRUE)))
       stop("the cache written to a temporary file held nothing")
+    # And readable by the package itself. A file that loads but that
+    # .read_cache() rejects would be ignored at the next start, taking every
+    # value set in it with it, including ones that were fine (review A02).
+    checked <- .read_cache(tmpfile)
+    if (identical(checked$status, "reject"))
+      stop("the new cache would not be usable when the package is next ",
+           "loaded, so the previous one has been kept: ",
+           sub("^.*has been ignored\\.\n  ", "",
+               sub("\n  The file has been left unchanged.*$", "", checked$message)))
     if (!file.rename(tmpfile, filePath)) {
       # Same-directory rename, so this is a permissions or filesystem
       # failure rather than a cross-device move.

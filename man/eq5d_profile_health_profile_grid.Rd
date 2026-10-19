@@ -56,6 +56,17 @@ This is why the function takes a value set rather than a column of
 pre-calculated values: the states that do \emph{not} occur in the data
 still have to be valued in order to place the states that do.
 }
+\section{Pairing records}{
+
+Each respondent's records are compared in timepoint order, using only the
+timepoints in \code{levels_fu}. The function stops, naming the respondents,
+if a respondent has more than one record at the same timepoint: it cannot
+tell which to compare, and does not choose. Where the analysis is split by
+\code{name_groupvar}, it also stops if a respondent is not in the same
+group at every timepoint (a missing group at one timepoint counts as a
+change), because the change is attributed to the respondent's group.
+}
+
 \examples{
 tmp <- eq5d_profile_health_profile_grid(
            df = example_data,

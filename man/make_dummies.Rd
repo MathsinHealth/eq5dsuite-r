@@ -36,7 +36,12 @@ make_dummies(
 \item{return_df}{If set to TRUE, data.frame is returned, otherwise matrix. Defaults to TRUE.}
 }
 \value{
-A data.frame of dummy variables
+A data.frame of dummy variables, one row per row of \code{df}.
+  Levels are read as the value functions read them: text and factors
+  through their labels. A level the instrument does not have (fractional,
+  0, negative, non-finite or above the highest level) is not a level, so
+  that dimension's dummies are \code{NA}, with a warning; a missing level
+  gives \code{NA} dummies without one.
 }
 \description{
 Make a data.frame of all EQ-5D dummies relevant for e.g. regression modelling.

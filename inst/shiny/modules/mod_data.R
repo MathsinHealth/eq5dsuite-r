@@ -22,7 +22,7 @@ mod_data_ui <- function(id) {
         # The formats actually accepted, which online excludes .rds.
         shiny::p(accepted_types_text(), ", one row per observation."),
         shiny::p(shiny::tags$strong("Required:"), " the five EQ-5D dimensions, ",
-                 "EQ-5D-3L (levels 1–3) or EQ-5D-5L (levels 1–5)."),
+                 "EQ-5D-3L or EQ-5D-Y-3L (levels 1–3), or EQ-5D-5L (levels 1–5)."),
         shiny::p(shiny::tags$strong("Optional:"), " timepoint, patient ID, ",
                  "group, EQ VAS, age and sex, an existing value column. Each ",
                  "unlocks further analyses."),
@@ -134,7 +134,8 @@ mod_data_server <- function(id, rv) {
 
       shiny::tagList(
         shiny::radioButtons(ns("version"), "EQ-5D version",
-                            choices = c("EQ-5D-3L" = "3L", "EQ-5D-5L" = "5L"),
+                            choices = c("EQ-5D-3L" = "3L", "EQ-5D-5L" = "5L",
+                                        "EQ-5D-Y-3L" = "Y3L"),
                             selected = input$version %||% "3L", inline = TRUE),
 
         shiny::tags$p("Dimensions", class = "sidebar-label"),

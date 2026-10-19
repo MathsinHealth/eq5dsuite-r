@@ -46,7 +46,8 @@ test_that("states given as text or factor labels are read through the labels", {
 test_that("toEQ5Ddims() does not truncate a fractional code", {
   w <- testthat::capture_warnings(d <- toEQ5Ddims(c(12321, 12321.5)))
   expect_true(any(grepl("not a whole", w)))
-  expect_identical(unname(unlist(d[1, ])), c(1, 2, 3, 2, 1))
+  # Integer columns since the toEQ5Ddims() type fix (see test-paper-findings.R).
+  expect_identical(unname(unlist(d[1, ])), c(1L, 2L, 3L, 2L, 1L))
   expect_true(all(is.na(d[2, ])))
 })
 

@@ -27,16 +27,25 @@
     }, warnAt * 1000);
   }
 
-  $(document).on("shiny:connected", function () {
-    Shiny.addCustomMessageHandler("eq5d_idle_start", function (m) {
-      warnAt = m.warnAfter; endAt = m.endAfter;
+  // Registered once, when the script loads, as Shiny expects. They used to
+  // be registered in a "shiny:connected" hook, and the reset handler took no
+  // argument: Shiny refuses such a handler with an error, which stopped the
+  // online app from loading data at all. A second registration, on a
+  // reconnect, would have thrown too.
+  var listening = false;
+  Shiny.addCustomMessageHandler("eq5d_idle_start", function (m) {
+    warnAt = m.warnAfter; endAt = m.endAfter;
+    if (!listening) {
+      listening = true;
       ["mousemove", "mousedown", "keydown", "touchstart", "scroll"]
         .forEach(function (ev) {
           document.addEventListener(ev, function () { if (!warned) reset(); },
                                     {passive: true});
         });
-      schedule();
-    });
-    Shiny.addCustomMessageHandler("eq5d_idle_reset", function () { reset(); });
+    }
+    clearTimeout(timer);
+    warned = false;
+    schedule();
   });
+  Shiny.addCustomMessageHandler("eq5d_idle_reset", function (m) { reset(); });
 })();

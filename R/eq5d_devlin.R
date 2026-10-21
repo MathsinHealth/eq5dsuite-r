@@ -1602,7 +1602,13 @@ eq5d_utility_norms_comparison <- function(df,
   stat_cols <- setdiff(names(combined), c("groupvar", "age_cat"))
   all_gc <- unique(combined[, c("groupvar", "age_cat"), drop = FALSE])
   grp_vals <- unique(combined$groupvar)
-  age_vals <- unique(combined$age_cat)
+  # Age bands in the order of the age factor's levels (for numeric ages, the
+  # bands cut() made), then the total; bands nobody is in are left out. They
+  # were in order of first appearance, so a band seen only in the second
+  # group came after all the others (a 20-29 column after 80-89).
+  band_order <- if (is.factor(df$age_cat)) levels(df$age_cat) else sort(unique(df$age_cat))
+  present <- unique(as.character(combined$age_cat))
+  age_vals <- c(intersect(band_order, present), setdiff(present, band_order))
 
   # build result: for each (groupvar, stat), create row; cols = age_cat
   result_list <- lapply(grp_vals, function(gv) {

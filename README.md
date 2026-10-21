@@ -1,8 +1,7 @@
-# eq5dsuite <img src="man/figures/logo.png" align="right" height="139" alt="" />
+# eq5dsuite 
 
 <!-- badges: start -->
 [![CRAN status](https://www.r-pkg.org/badges/version/eq5dsuite)](https://CRAN.R-project.org/package=eq5dsuite)
-[![R-CMD-check](https://github.com/MathsInHealth/eq5dsuite-r/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/MathsInHealth/eq5dsuite-r/actions/workflows/R-CMD-check.yaml)
 [![License: GPL v2+](https://img.shields.io/badge/License-GPL%20(%3E%3D%202)-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
 <!-- badges: end -->
 

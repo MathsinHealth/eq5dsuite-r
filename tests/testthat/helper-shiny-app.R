@@ -7,8 +7,8 @@
 # would catch the app calling an exported function by bare name: run_app()
 # loads the package but does not attach it.
 #
-# testthat loads helper-*.R before every test file, so both test-shiny-app.R
-# and test-shiny-formatting.R use this.
+# testthat loads helper-*.R before every test file, so every app test uses
+# this.
 
 skip_unless_app <- function() {
   skip_if_not_installed("shiny")

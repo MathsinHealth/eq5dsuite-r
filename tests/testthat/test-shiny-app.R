@@ -15,6 +15,10 @@
 # Navigation
 # ---------------------------------------------------------------------------
 
+# Slow (it drives the Shiny app), so it runs locally and on GitHub, not on
+# CRAN, where the whole check must stay within CRAN's time limit.
+skip_on_cran()
+
 test_that("the pages are in the order the work is done", {
   skip_unless_app()
   txt <- paste(readLines(file.path(app_dir(), "ui.R"), warn = FALSE),
@@ -560,7 +564,7 @@ test_that("an exact-age column does not default to Bands", {
 test_that("the column name offered follows the method and value set", {
   skip_unless_app()
   e <- app_env()
-  # utility_<METHOD>_<CODE>; see test-value-col-names.R for the behaviour.
+  # utility_<METHOD>_<CODE>.
   expect_equal(e$suggest_value_col("direct", "CA"), "utility_CA")
   expect_equal(e$suggest_value_col("xwr", "CA"), "utility_XWR_CA")
   expect_equal(e$suggest_value_col("xw", "DK"), "utility_XW_DK")

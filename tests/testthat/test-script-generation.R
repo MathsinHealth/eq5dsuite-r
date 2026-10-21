@@ -3,6 +3,10 @@
 # these tests drive a session through shiny::testServer() and then run what
 # comes out.
 
+# Slow (it drives the Shiny app), so it runs locally and on GitHub, not on
+# CRAN, where the whole check must stay within CRAN's time limit.
+skip_on_cran()
+
 q <- function(expr) suppressWarnings(suppressMessages(expr))
 DIMS5 <- c("mo", "sc", "ua", "pd", "ad")
 

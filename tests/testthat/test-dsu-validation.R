@@ -1,6 +1,6 @@
 # Validation of eqxw_UK() and eqxwr_UK() against the NICE DSU's own R command.
 #
-# The fixtures hold the DSU's results
+# The fixtures hold the DSU's results, produced by tools/dsu-fixtures.R
 # (in the repository, not the built package), which runs the DSU's fun_map()
 # directly and records the SHA-256 sums of the DSU files it used. The DSU
 # publishes its command without a licence, so it is not redistributed here:

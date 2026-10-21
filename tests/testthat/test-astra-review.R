@@ -854,3 +854,26 @@ test_that("AI07: valid bandwidths, and the DSU defaults, are unchanged", {
   expect_no_error(q(eqxwr_UK(c(0.5, 0.7), age = 40, male = 1, bwidth = c(0.1, 0.4))))
   expect_no_error(q(eqxw_UK(0.5, age = 40, male = 1, bwidth = "default")))
 })
+
+# ── Age-band columns of the norms comparison follow the factor's levels ──────
+# (found while re-rendering the paper's Table S16, 2026-10-21: the only
+# 20-29-year-old was a man, so "20 to 29" came after "80 to 89".)
+
+test_that("norms comparison: age-band columns in factor-level order, total last", {
+  bands <- c("20 to 29", "30 to 39", "40 to 49")
+  d <- data.frame(utility = c(0.5, 0.6, 0.7, 0.8),
+                  g = c("F", "F", "M", "M"),
+                  age = factor(c("30 to 39", "40 to 49", "20 to 29", "40 to 49"), levels = bands),
+                  fu = "a")
+  r <- q(eq5d_utility_norms_comparison(d, name_fu = "fu", name_groupvar = "g", name_age = "age"))
+  expect_identical(setdiff(names(r), c("groupvar", "name")), c(bands, "Total"))
+  # A level nobody is in is not a column.
+  d$age <- factor(as.character(d$age), levels = c("10 to 19", bands))
+  r <- q(eq5d_utility_norms_comparison(d, name_fu = "fu", name_groupvar = "g", name_age = "age"))
+  expect_identical(setdiff(names(r), c("groupvar", "name")), c(bands, "Total"))
+  # Numeric ages: the bands in age order.
+  d$age <- c(40, 50, 22, 50)
+  r <- q(eq5d_utility_norms_comparison(d, name_fu = "fu", name_groupvar = "g", name_age = "age"))
+  expect_identical(setdiff(names(r), c("groupvar", "name")),
+                   c("18-24", "35-44", "45-54", "Total"))
+})

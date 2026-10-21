@@ -4,6 +4,10 @@
 # the EQ-5D-Y-3L value sets and no crosswalk or mapping -- none exists for it
 # -- and leave the analyses as they are.
 
+# Slow (it drives the Shiny app), so it runs locally and on GitHub, not on
+# CRAN, where the whole check must stay within CRAN's time limit.
+skip_on_cran()
+
 q <- function(expr) suppressWarnings(suppressMessages(expr))
 
 Y3L_CODES <- function()

@@ -5,6 +5,10 @@
 # plain title and description, and "Select this" selects one in the sidebar
 # without running it.
 
+# Slow (it drives the Shiny app), so it runs locally and on GitHub, not on
+# CRAN, where the whole check must stay within CRAN's time limit.
+skip_on_cran()
+
 q <- function(expr) suppressWarnings(suppressMessages(expr))
 
 ids <- function(specs) vapply(specs, `[[`, "", "id")
